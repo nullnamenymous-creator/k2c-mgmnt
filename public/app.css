@@ -155,3 +155,23 @@ dialog::backdrop{background:#0f1d35a6}
 @media(max-width:380px){
   .dialog-body .grid{grid-template-columns:minmax(0,1fr)}
 }
+
+.stock-sheet th,.stock-sheet td{border-right:1px solid var(--line);padding:9px 11px}
+.stock-sheet th:last-child,.stock-sheet td:last-child{border-right:0}
+.stock-sheet th{background:#e9eff7;color:#273b56}
+.stock-sheet tbody tr:nth-child(even){background:#f7f9fc}
+.stock-sheet tbody tr:hover{background:#edf3ff}
+.stock-sheet td:first-child{width:27%}
+.stock-sheet td:nth-child(2){width:21%}
+.stock-sheet :is(th,td):nth-child(n+3):nth-child(-n+6){text-align:right;font-variant-numeric:tabular-nums}
+.stock-sheet td:nth-child(n+3):nth-child(-n+6){white-space:nowrap}
+.stock-sheet td:nth-child(3) small{white-space:normal}
+.stock-sheet td:last-child .button{min-height:32px;padding:5px 10px}
+
+@media(max-width:620px){
+  .stock-sheet tbody tr{gap:0;padding:0}
+  .stock-sheet tbody td{padding:8px 10px;border-right:0;border-bottom:1px solid var(--line)}
+  .stock-sheet tbody td:nth-child(-n+2){grid-column:1/-1;width:auto}
+  .stock-sheet tbody td:nth-child(odd):nth-child(n+3):nth-child(-n+6){border-right:1px solid var(--line)}
+  .stock-sheet tbody td:last-child{border-bottom:0}
+}

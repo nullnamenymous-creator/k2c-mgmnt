@@ -69,9 +69,9 @@ async function refresh() {
   render();
 }
 
-function table(columns, rows, empty) {
+function table(columns, rows, empty, className = '') {
   if (!rows.length) return '<p class="empty">' + esc(empty) + '</p>';
-  return '<div class="table-wrap"><table><thead><tr>' + columns.map(s => '<th scope="col">' + esc(s) + '</th>').join('') +
+  return '<div class="table-wrap ' + className + '"><table><thead><tr>' + columns.map(s => '<th scope="col">' + esc(s) + '</th>').join('') +
     '</tr></thead><tbody>' + rows.map(row => '<tr>' + row.map((cell, i) =>
       '<td><span class="mobile-label" aria-hidden="true">' + esc(columns[i]) + '</span><div class="cell-value">' + cell + '</div></td>'
     ).join('') + '</tr>').join('') + '</tbody></table></div>';
@@ -105,15 +105,17 @@ function pageRows() {
       matches(s.order, s.tracking, s.channel, s.buyer, ...s.items.map(label))), online);
   }
   if (view === 'stock') {
-    const columns = ['Barang / Varian', 'Stok', ...(can('admin') ? ['Harga jual', 'Aksi'] : [])];
-    return table(columns, state.products.filter(p => matches(label(p), p.category)).map(p => {
-      const stock = '<strong>' + (p.stock - p.reserved) + ' tersedia</strong>' +
-        (p.reserved ? '<small>' + p.reserved + ' dipesan</small>' : '') +
-        (p.inspection ? '<small>' + p.inspection + ' retur menunggu cek</small>' : '');
-      const row = ['<strong>' + esc(p.name) + '</strong><small>' + esc([p.variant, p.category].filter(Boolean).join(' · ')) + '</small>', stock];
-      if (can('admin')) row.push('<div>Toko <strong>' + fmt(p.retail) + '</strong></div><small>Marketplace ' + fmt(p.market) + '</small>', button('Edit barang', 'product', p.id));
-      return row;
-    }), 'Belum ada barang yang sesuai.');
+    const columns = ['Nama barang', 'Varian', 'Tersedia', 'Dipesan', 'Harga toko', 'Harga marketplace', 'Aksi'];
+    const rows = state.products.filter(p => matches(label(p), p.category)).map(p => [
+      '<strong>' + esc(p.name) + '</strong><small>' + esc(p.category) + '</small>',
+      esc(p.variant || '—'),
+      '<strong>' + (p.stock - p.reserved) + '</strong>' + (p.inspection ? '<small>' + p.inspection + ' retur dicek</small>' : ''),
+      p.reserved,
+      fmt(p.retail),
+      fmt(p.market),
+      button('Edit', 'product', p.id),
+    ]);
+    return table(columns, rows, 'Belum ada barang yang sesuai.', 'stock-sheet');
   }
   return table(['Barang', 'Penerimaan', 'Harga beli', 'Aksi'], state.purchases.filter(p => matches(p.supplier, label(byId(state.products, p.product)))).map(p =>
     ['<strong>' + esc(label(byId(state.products, p.product))) + '</strong><small>' + esc(p.supplier + ' · ' + date(p.at)) + '</small>',
