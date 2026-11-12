@@ -25,7 +25,11 @@ let query = '';
 let filter = '';
 let noticeTimer;
 let releaseCamera;
-const recordingLimit = 105 * 1024 ** 2;
+const accessFromLink = new URLSearchParams(location.hash.slice(1)).get('access');
+if (accessFromLink) {
+  sessionStorage.setItem('k2c-access', accessFromLink);
+  history.replaceState(null, '', location.pathname + location.search);
+}
 const can = (...roles) => roles.includes(state.user.role);
 const button = (title, action, key = '', kind = '') => '<button type="button" class="button ' + kind + '" data-action="' + action + '" data-key="' + esc(key) + '">' + esc(title) + '</button>';
 const field = (name, title, value = '', type = 'text', extra = '') => '<label>' + esc(title) + '<input name="' + name + '" type="' + type + '" value="' + esc(value) + '" ' + extra + '></label>';
@@ -39,6 +43,8 @@ async function api(path, body, submission) {
   const isForm = body instanceof FormData;
   const headers = isForm ? {} : { 'Content-Type': 'application/json' };
   if (submission) headers['X-K2C-Submission'] = submission;
+  const cloudAccess = path === 'role' ? sessionStorage.getItem('k2c-access') : '';
+  if (cloudAccess) headers['X-K2C-Access'] = cloudAccess;
   const response = await fetch('/api/' + path, body === undefined ? {} : {
     method: 'POST',
     headers,
@@ -212,6 +218,8 @@ function recordTest(id) {
   let preview;
   let closed = false;
   let mode = 'open';
+  const maxSize = state.uploadLimit || 118 * 1024 ** 2;
+  const recordingLimit = state.cloudUploads ? maxSize - 3 * 1024 ** 2 : 105 * 1024 ** 2;
   save.disabled = true;
 
   function stopCamera() {
@@ -228,6 +236,7 @@ function recordTest(id) {
     preview = undefined;
     delete formElement.recordedVideo;
     delete formElement.dataset.submission;
+    delete formElement.cloudTicket;
   }
 
   function setMode(next, title, message) {
@@ -295,7 +304,7 @@ function recordTest(id) {
       recorder.onstop = () => {
         if (closed || failed) return;
         stopCamera();
-        if (!size || size >= 118 * 1024 ** 2 || recorder.mimeType.split(';')[0].toLowerCase() !== 'video/mp4') {
+        if (!size || size >= maxSize || recorder.mimeType.split(';')[0].toLowerCase() !== 'video/mp4') {
           video.hidden = true;
           setMode('open', 'Buka kamera', 'Video MP4 tidak bisa disimpan. Coba rekam ulang dengan durasi lebih pendek.');
           return;
@@ -466,6 +475,7 @@ document.addEventListener('input', event => {
 
 document.addEventListener('change', event => {
   const target = event.target;
+  if (target.name === 'proof' && target.form) delete target.form.cloudTicket;
   if (target.name === 'status') {
     filter = target.value;
     document.querySelector('#rows').innerHTML = pageRows();
@@ -511,10 +521,26 @@ document.addEventListener('submit', async event => {
     let body = values;
     if (uploads.length) {
       if (uploads.reduce((sum, f) => sum + f.size, 0) >= 120 * 1024 ** 2) throw new Error('Total file harus di bawah 120 MB.');
-      body = new FormData();
-      body.set('payload', JSON.stringify(values));
-      for (const file of uploads) body.append('proof', file);
       submit.textContent = 'Menyimpan bukti…';
+      if (state.cloudUploads) {
+        if (uploads.some(file => file.size > state.uploadLimit)) throw new Error('Ukuran setiap file harus di bawah 45 MB.');
+        if (!form.cloudTicket) {
+          const signed = await api('upload', {
+            action, id, tracking: values.tracking,
+            files: uploads.map(file => ({ name: file.name, size: file.size, kind: file.type })),
+          });
+          for (const [i, file] of uploads.entries()) {
+            const upload = await fetch(signed.urls[i], { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+            if (!upload.ok) throw new Error('File bukti gagal dikirim. Coba simpan lagi.');
+          }
+          form.cloudTicket = signed.ticket;
+        }
+        body = { ...values, ticket: form.cloudTicket };
+      } else {
+        body = new FormData();
+        body.set('payload', JSON.stringify(values));
+        for (const file of uploads) body.append('proof', file);
+      }
     }
     form.dataset.submission ||= globalThis.crypto.randomUUID?.() || Array.from(globalThis.crypto.getRandomValues(new Uint8Array(18)), byte => byte.toString(16).padStart(2, '0')).join('');
     await api('action/' + action, body, form.dataset.submission);
@@ -525,7 +551,10 @@ document.addEventListener('submit', async event => {
     else if (id && action !== 'product') saleDetail(id);
   } catch (error) {
     if (error.status === 401) chooseRole(error.message);
-    else if (dialog.open) errorBox.textContent = error.message;
+    else if (dialog.open) {
+      if (error.message.includes('Sesi unggahan berakhir')) delete form.cloudTicket;
+      errorBox.textContent = error.message;
+    }
     else notify(error.message);
   } finally {
     submit.disabled = false;

@@ -29,3 +29,17 @@ Pesanan PC rakitan dapat memakai stok unit siap jual atau memakai komponen yang 
 Server lokal menerima koneksi loopback secara default. Siapa pun yang bisa membuka aplikasi dapat memilih Admin. Untuk penggunaan lintas perangkat, batasi akses di jaringan privat atau melalui gateway yang memverifikasi pengguna. HTTPS diperlukan untuk pemasangan PWA dari ponsel. Atur `K2C_ORIGIN` ke alamat HTTPS dan `K2C_SECURE_COOKIE=1` saat memakai reverse proxy HTTPS. Pencatatan dan pengunggahan memerlukan koneksi ke server, termasuk untuk transaksi penjualan di toko.
 
 Database dan bukti pesanan disimpan bersama di `data/k2c.sqlite`. Untuk backup sederhana, hentikan server dan salin seluruh folder `data` (atau direktori dari `K2C_DATA_DIR`) sebelum menjalankan server lagi. File bukti disimpan dengan batas total 120 MB per pengiriman formulir. Aplikasi mencatat marketplace secara manual sesuai alur kerja admin.
+
+## Deploy cloud di Vercel
+
+Impor repo ke Vercel dengan preset **Other** dan Output Directory `public` (sudah didefinisikan di `vercel.json`). Terapkan `supabase/setup.sql` satu kali pada project Supabase khusus K2C. Masukkan variabel berikut di Vercel, lalu deploy ulang setelah menyimpannya.
+
+| Variabel | Isi |
+|---|---|
+| `SUPABASE_URL` | URL project Supabase |
+| `SUPABASE_SECRET_KEY` | Secret key server-side dari pengaturan API keys Supabase |
+| `K2C_CLOUD_ACCESS_KEY` | Nilai acak setidaknya 32 karakter. Gunakan karakter alfanumerik atau hex |
+
+Buka aplikasi melalui `https://alamat-vercel/#access=NILAI_K2C_CLOUD_ACCESS_KEY`. Kirim tautan ini hanya kepada tim yang boleh mengakses K2C. Setelah tautan dibuka, layar pertama tetap menampilkan **Admin** dan **Teknisi**. Kedua peran dapat dipilih oleh siapa pun yang menerima tautan. Rotasi kunci memutus sesi cloud yang sudah ada.
+
+Bukti disimpan langsung dari browser ke bucket privat Supabase dengan batas 45 MB per file. Database cloud baru kosong. Data yang sebelumnya dicatat di SQLite tetap di perangkat lokal sampai ada migrasi data.
