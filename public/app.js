@@ -389,9 +389,16 @@ function productNameValue(container, name) {
   return selected === customProductName ? container.querySelector('[name=' + name + 'Custom]').value.trim() : selected;
 }
 
+function transactionProductSelect() {
+  return select('product', 'Barang / Varian', [...options(), ['new', '+ Buat produk baru']], state.products.length ? '' : 'new');
+}
+
 function transactionProduct(sale = false) {
-  return select('product', 'Barang / Varian', [...options(), ['new', '+ Buat produk baru']], state.products.length ? '' : 'new') +
-    '<fieldset class="new-product"' + (state.products.length ? ' hidden disabled' : '') + '><legend>Produk baru</legend>' +
+  return transactionProductSelect() + newProductFields(sale);
+}
+
+function newProductFields(sale) {
+  return '<fieldset class="new-product"' + (state.products.length ? ' hidden disabled' : '') + '><legend>Produk baru</legend>' +
     '<div class="grid">' + productNameField('newName') + field('newVariant', 'Varian') +
     categoryField('newCategory') +
     (sale ? amount('newStock', 'Stok fisik sebelum dijual', '', 1) + amount('newCost', 'Modal per unit (opsional)', '', 0, false) :
@@ -408,9 +415,11 @@ function newProductFrom(container) {
 }
 
 function purchaseLine() {
-  return '<div class="line-item">' + transactionProduct() + '<div class="grid">' +
-    amount('qty', 'Jumlah', 1, 1) + amount('cost', 'Harga beli per unit') + '</div><div>' +
-    button('Hapus baris', 'line-remove') + '</div></div>';
+  return '<tbody class="purchase-item"><tr class="purchase-entry"><td>' + transactionProductSelect() + '</td><td>' +
+    amount('qty', 'Jumlah', 1, 1) + '</td><td>' + amount('cost', 'Harga beli per unit') +
+    '</td><td class="purchase-subtotal">—</td><td>' + button('Hapus', 'line-remove') +
+    '</td></tr><tr class="purchase-new"' + (state.products.length ? ' hidden' : '') +
+    '><td colspan="5">' + newProductFields(false) + '</td></tr></tbody>';
 }
 
 function line() {
@@ -546,9 +555,14 @@ async function click(action, key, element) {
       fmt(purchaseTotal(purchase)), button('Lihat nota', 'purchase-detail', purchase.id),
     ]), 'Belum ada pembelian yang terhubung ke supplier ini.'));
   }
-  if (action === 'line-add') return dialog.querySelector('#lines').insertAdjacentHTML('beforeend', dialog.querySelector('form').dataset.submit === 'purchase' ? purchaseLine() : line());
+  if (action === 'line-add') {
+    dialog.querySelector('#lines').insertAdjacentHTML('beforeend', dialog.querySelector('form').dataset.submit === 'purchase' ? purchaseLine() : line());
+    dialog.querySelector('#lines').lastElementChild.querySelector('[name=product]').focus();
+    return;
+  }
   if (action === 'line-remove') {
-    if (dialog.querySelectorAll('.line-item').length > 1) element.closest('.line-item').remove();
+    const row = element.closest('.line-item, .purchase-item');
+    if (row.parentElement.children.length > (row.matches('.purchase-item') ? 2 : 1)) row.remove();
     return;
   }
   if (action === 'sale-new') {
@@ -578,7 +592,7 @@ async function click(action, key, element) {
       field('name', 'Nama supplier', '', 'text', 'required') +
       field('phone', 'Nomor WhatsApp', '', 'tel', 'required placeholder="081234567890"'), '', 'Simpan & lanjut pembelian');
     return form('Catat pembelian', 'purchase', select('supplier', 'Supplier', [['', 'Pilih supplier'], ...suppliers.map(s => [s.id, s.name])]) +
-      '<div id="lines">' + purchaseLine() + '</div><div>' + button('Tambah barang', 'line-add') + '</div>');
+      '<div class="purchase-sheet"><table id="lines"><thead><tr><th scope="col">Barang / Varian</th><th scope="col">Jumlah</th><th scope="col">Harga beli per unit</th><th scope="col">Subtotal</th><th scope="col">Aksi</th></tr></thead>' + purchaseLine() + '</table></div><div>' + button('Tambah barang', 'line-add') + '</div>');
   }
   if (action === 'parts') {
     const [id, index] = key.split(':');
@@ -618,6 +632,12 @@ document.addEventListener('click', event => {
 });
 
 document.addEventListener('input', event => {
+  const row = event.target.closest('.purchase-entry');
+  if (row && ['qty', 'cost'].includes(event.target.name)) {
+    const qty = row.querySelector('[name=qty]');
+    const cost = row.querySelector('[name=cost]');
+    row.querySelector('.purchase-subtotal').textContent = qty.validity.valid && cost.validity.valid ? fmt(qty.valueAsNumber * cost.valueAsNumber) : '—';
+  }
   if (event.target.id !== 'search') return;
   query = event.target.value;
   document.querySelector('#rows').innerHTML = pageRows();
@@ -647,8 +667,12 @@ document.addEventListener('change', event => {
     document.querySelector('#rows').innerHTML = pageRows();
   }
   if (target.name === 'product') {
-    const fieldset = (target.closest('.line-item') || target.form).querySelector('.new-product');
-    if (fieldset) fieldset.hidden = fieldset.disabled = target.value !== 'new';
+    const fieldset = (target.closest('.line-item, .purchase-item') || target.form).querySelector('.new-product');
+    if (fieldset) {
+      fieldset.hidden = fieldset.disabled = target.value !== 'new';
+      const extra = fieldset.closest('.purchase-new');
+      if (extra) extra.hidden = fieldset.hidden;
+    }
   }
   if (target.name === 'product' && target.form.dataset.submit === 'sale' && target.closest('.line-item')) {
     const row = target.closest('.line-item');
@@ -686,7 +710,7 @@ document.addEventListener('submit', async event => {
       values.name = productNameValue(form, 'name');
       values.category = categoryValue(form, 'category');
     }
-    if (action === 'purchase') values.items = Array.from(form.querySelectorAll('.line-item'), row => ({
+    if (action === 'purchase') values.items = Array.from(form.querySelectorAll('.purchase-item'), row => ({
       product: row.querySelector('[name=product]').value, newProduct: newProductFrom(row),
       qty: row.querySelector('[name=qty]').value, cost: row.querySelector('[name=cost]').value,
     }));

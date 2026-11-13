@@ -218,3 +218,29 @@ dialog::backdrop{background:#0f1d35a6}
   .sales-list .mobile-label{display:block;color:var(--muted);font-size:11px;margin-bottom:2px}
   .sales-list td:first-child .mobile-label,.sales-list td:last-child .mobile-label{display:none}
 }
+
+.purchase-sheet table{table-layout:fixed;border:1px solid var(--line)}
+.purchase-sheet :is(th,td){padding:5px 7px;border:1px solid var(--line)}
+.purchase-sheet th:first-child{width:auto}
+.purchase-sheet th:nth-child(2){width:65px}
+.purchase-sheet th:nth-child(3){width:130px}
+.purchase-sheet th:nth-child(4){width:105px}
+.purchase-sheet th:nth-child(5){width:70px}
+.purchase-sheet td:first-child{width:auto}
+.purchase-sheet tbody:nth-of-type(even){background:#f8fafc}
+.purchase-entry label{font-size:0;display:block}
+.purchase-entry :is(select,input,.button){font-size:13px;min-height:34px;padding:5px 7px}
+.purchase-entry input,.purchase-subtotal{text-align:right;font-variant-numeric:tabular-nums}
+.purchase-subtotal{white-space:nowrap}
+@media(max-width:620px){
+  .purchase-sheet tbody{border-top:1px solid var(--line)}
+  .purchase-sheet .purchase-entry{grid-template-columns:minmax(55px,1fr) minmax(95px,1.65fr) auto;gap:6px;padding:8px;border:0}
+  .purchase-sheet .purchase-entry td{padding:0;border:0}
+  .purchase-sheet .purchase-entry td:first-child{grid-column:1/-1}
+  .purchase-sheet .purchase-entry td:last-child{grid-column:3;grid-row:2/4;align-self:end}
+  .purchase-sheet .purchase-subtotal{grid-column:1/3;text-align:right;font-size:12px}
+  .purchase-sheet .purchase-entry label{font-size:11px}
+  .purchase-sheet .purchase-entry td:first-child label{font-size:0}
+  .purchase-sheet .purchase-new{display:block;padding:0 8px 8px;border:0}
+  .purchase-sheet .purchase-new td{padding:0;border:0}
+}
