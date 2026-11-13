@@ -23,6 +23,8 @@ let state;
 let view = 'home';
 let query = '';
 let filter = '';
+let marketplace = marketplaces[0];
+const marketplaceFilters = new Map();
 let noticeTimer;
 let releaseCamera;
 const accessFromLink = new URLSearchParams(location.hash.slice(1)).get('access');
@@ -107,7 +109,7 @@ function pageRows() {
   if (can('teknisi')) return technicianOrders();
   if (view === 'online' || view === 'shop') {
     const online = view === 'online';
-    return salesTable(state.sales.filter(s => (s.channel !== 'Toko') === online && (!filter || s.status === filter) &&
+    return salesTable(state.sales.filter(s => (online ? s.channel === marketplace : s.channel === 'Toko') && (!filter || s.status === filter) &&
       matches(s.order, s.tracking, s.channel, s.buyer, ...s.items.map(label))), online);
   }
   if (view === 'stock') {
@@ -175,10 +177,18 @@ function render() {
       '</div>' + panel('Antrean pesanan', salesTable(online.filter(o => cards.includes(o.status)).slice(0, 10), true, 'Antrean kerja kosong.'));
   } else {
     const titles = { online: ['Input pesanan', 'sale-new'], shop: ['Transaksi baru', 'sale-new'], stock: ['Tambah barang', 'product'], buy: ['Catat pembelian', 'purchase'] };
-    if (admin) action = button(...titles[view], '', 'primary');
+    if (admin && (view !== 'online' || marketplaces.includes(marketplace))) action = view === 'online' ? button('Input pesanan ' + marketplace, 'sale-new', marketplace, 'primary') : button(...titles[view], '', 'primary');
     const placeholders = { online: 'Cari resi, nomor pesanan, atau pembeli', shop: 'Cari pembeli atau barang', stock: 'Cari barang atau varian', buy: 'Cari supplier atau barang' };
     const statusFilter = view === 'online' ? '<div>' + select('status', 'Status', [['', 'Semua status'], ...statuses.map(s => [s, s])], filter) + '</div>' : '';
     content = '<section class="panel"><div class="toolbar">' + search(placeholders[view]) + statusFilter + '</div><div id="rows">' + pageRows() + '</div></section>';
+    if (view === 'online') {
+      const channels = [...marketplaces, ...new Set(online.map(sale => sale.channel).filter(channel => !marketplaces.includes(channel)))];
+      content = '<nav class="market-tabs" aria-label="Pilih marketplace">' + channels.map(channel =>
+        '<button type="button" class="market-tab" data-action="market-channel" data-key="' + esc(channel) + '"' +
+        (channel === marketplace ? ' aria-current="page"' : '') + '><strong>' + esc(channel) + '</strong><span>' +
+        online.filter(sale => sale.channel === channel).length + ' pesanan</span></button>'
+      ).join('') + '</nav>' + content;
+    }
     if (view === 'stock' && admin && state.movements.length) content += '<details class="panel stock-history"><summary>Riwayat stok</summary>' + table(['Barang', 'Jumlah', 'Alasan', 'Petugas', 'Waktu'], state.movements.slice(0, 20).map(m => [
       esc(label(byId(state.products, m.product))), (m.qty > 0 ? '+' : '') + m.qty, esc(m.reason), esc(m.actor), esc(date(m.at)),
     ]), 'Belum ada pergerakan stok.') + '</details>';
@@ -329,8 +339,28 @@ function recordTest(id) {
   });
 }
 
+const categories = ['Laptop', 'PC rakitan', 'PC built-up', 'Monitor', 'Spare part', 'Aksesori', 'Lainnya'];
+
+function transactionProduct(sale = false) {
+  return select('product', 'Barang / Varian', [...options(), ['new', '+ Buat produk baru']], state.products.length ? '' : 'new') +
+    '<fieldset class="new-product"' + (state.products.length ? ' hidden disabled' : '') + '><legend>Produk baru</legend>' +
+    '<div class="grid">' + field('newName', 'Nama barang', '', 'text', 'required') + field('newVariant', 'Varian') +
+    select('newCategory', 'Kategori', categories.map(item => [item, item])) +
+    (sale ? amount('newStock', 'Stok fisik sebelum dijual', '', 1) + amount('newCost', 'Modal per unit (opsional)', '', 0, false) :
+      amount('newRetail', 'Harga toko (opsional)', '', 0, false) + amount('newMarket', 'Harga marketplace (opsional)', '', 0, false)) +
+    '</div></fieldset>';
+}
+
+function newProductFrom(container) {
+  const fieldset = container.querySelector('.new-product');
+  if (!fieldset || fieldset.disabled) return undefined;
+  const value = name => fieldset.querySelector('[name=' + name + ']')?.value;
+  return { name: value('newName'), variant: value('newVariant'), category: value('newCategory'),
+    initialStock: value('newStock'), initialCost: value('newCost'), retail: value('newRetail'), market: value('newMarket') };
+}
+
 function line() {
-  return '<div class="line-item">' + select('product', 'Barang / Varian', options()) + '<div class="grid">' +
+  return '<div class="line-item">' + transactionProduct(true) + '<div class="grid">' +
     amount('qty', 'Jumlah', 1, 1) + amount('price', 'Harga jual per unit') + '</div>' +
     '<label class="check assembly" hidden><input name="assemble" type="checkbox">Rakit untuk pesanan ini</label>' +
     '<div>' + button('Hapus baris', 'line-remove') + '</div></div>';
@@ -393,13 +423,28 @@ async function click(action, key, element) {
     await api('logout', {});
     view = 'home';
     query = filter = '';
+    marketplace = marketplaces[0];
+    marketplaceFilters.clear();
     return chooseRole();
   }
   if (action === 'reload') return refresh();
+  if (action === 'market-channel') {
+    if (marketplace === key) return;
+    marketplaceFilters.set(marketplace, { query, filter });
+    marketplace = key;
+    ({ query = '', filter = '' } = marketplaceFilters.get(key) || {});
+    return render();
+  }
   if (action === 'navigate' || action === 'queue') {
+    if (view === 'online') marketplaceFilters.set(marketplace, { query, filter });
     view = action === 'queue' ? 'online' : key;
-    filter = action === 'queue' ? key : '';
-    query = '';
+    ({ query = '', filter = '' } = view === 'online' ? marketplaceFilters.get(marketplace) || {} : {});
+    if (action === 'queue') {
+      const next = state.sales.find(sale => sale.channel !== 'Toko' && sale.status === key);
+      if (next) marketplace = next.channel;
+      filter = key;
+      query = '';
+    }
     render();
     return refresh();
   }
@@ -411,16 +456,17 @@ async function click(action, key, element) {
     return;
   }
   if (action === 'sale-new') {
-    if (!state.products.length) return notify('Tambahkan barang di menu Stok Barang dulu.');
     const online = key === 'online' || view === 'online';
-    const header = online ? '<div class="grid">' + select('channel', 'Marketplace', marketplaces.map(s => [s, s])) +
+    const channel = view === 'online' && marketplaces.includes(key) ? key : '';
+    const channelField = channel ? '<input type="hidden" name="channel" value="' + channel + '">' :
+      select('channel', 'Marketplace', marketplaces.map(s => [s, s]));
+    const header = online ? '<div class="grid">' + channelField +
       field('order', 'Nomor pesanan', '', 'text', 'required') + field('tracking', 'Nomor resi jika sudah ada') + field('buyer', 'Nama pembeli', '', 'text', 'required') + '</div>' :
       field('buyer', 'Nama pembeli jika ada') + '<input type="hidden" name="channel" value="Toko">';
-    return form(online ? 'Input pesanan marketplace' : 'Transaksi toko', 'sale', header + '<div id="lines">' + line() + '</div><div>' + button('Tambah baris', 'line-add') + '</div>');
+    return form(online ? 'Input pesanan ' + (channel || 'marketplace') : 'Transaksi toko', 'sale', header + '<div id="lines">' + line() + '</div><div>' + button('Tambah baris', 'line-add') + '</div>');
   }
   if (action === 'product') {
     const p = byId(state.products, key);
-    const categories = ['Laptop', 'PC rakitan', 'PC built-up', 'Monitor', 'Spare part', 'Aksesori', 'Lainnya'];
     const canSetInitial = !p || (!p.stock && !p.reserved && !state.movements.some(m => m.product === p.id));
     const initial = canSetInitial ? '<fieldset><legend>Stok awal (opsional)</legend><div class="grid">' +
       amount('initialStock', 'Jumlah yang sudah ada', '', 0, false) + amount('initialCost', 'Modal per unit', '', 0, false) + '</div></fieldset>' : '';
@@ -430,9 +476,8 @@ async function click(action, key, element) {
       '<div class="grid">' + amount('retail', 'Harga toko', p?.retail) + amount('market', 'Harga marketplace', p?.market) + '</div>' + initial, key);
   }
   if (action === 'purchase') {
-    if (!state.products.length) return notify('Tambahkan barang di menu Stok Barang dulu.');
     return form('Catat pembelian', 'purchase', field('supplier', 'Supplier', '', 'text', 'required') +
-      select('product', 'Barang / Varian', options()) + '<div class="grid">' + amount('qty', 'Jumlah dipesan', 1, 1) + amount('cost', 'Harga beli per unit') + '</div>');
+      transactionProduct() + '<div class="grid">' + amount('qty', 'Jumlah dipesan', 1, 1) + amount('cost', 'Harga beli per unit') + '</div>');
   }
   if (action === 'receive') {
     const p = byId(state.purchases, key);
@@ -480,6 +525,10 @@ document.addEventListener('change', event => {
     filter = target.value;
     document.querySelector('#rows').innerHTML = pageRows();
   }
+  if (target.name === 'product') {
+    const fieldset = (target.closest('.line-item') || target.form).querySelector('.new-product');
+    if (fieldset) fieldset.hidden = fieldset.disabled = target.value !== 'new';
+  }
   if (target.name === 'product' && target.closest('.line-item')) {
     const row = target.closest('.line-item');
     const p = byId(state.products, target.value);
@@ -507,10 +556,12 @@ document.addEventListener('submit', async event => {
     if (id) values.id = id;
     if (action === 'sale') values.items = Array.from(form.querySelectorAll('.line-item'), row => ({
       product: row.querySelector('[name=product]').value,
+      newProduct: newProductFrom(row),
       qty: row.querySelector('[name=qty]').value,
       price: row.querySelector('[name=price]').value,
       assemble: row.querySelector('[name=assemble]').checked,
     }));
+    if (action === 'purchase') values.newProduct = newProductFrom(form);
     if (action === 'return-result') values.quantities = fields.getAll('quantities');
     const uploads = fields.getAll('proof');
     if (action === 'ready') {
@@ -544,6 +595,10 @@ document.addEventListener('submit', async event => {
     }
     form.dataset.submission ||= globalThis.crypto.randomUUID?.() || Array.from(globalThis.crypto.getRandomValues(new Uint8Array(18)), byte => byte.toString(16).padStart(2, '0')).join('');
     await api('action/' + action, body, form.dataset.submission);
+    if (action === 'sale' && view === 'online') {
+      marketplace = values.channel;
+      query = filter = '';
+    }
     dialog.close();
     notify('Data tersimpan.');
     await refresh();

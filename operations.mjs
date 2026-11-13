@@ -41,6 +41,19 @@ export function apply(state, action, input, user, files = []) {
     sale.status = status;
     sale.history.push({ status, actor, at });
   }
+  function transactionProduct(line, channel) {
+    if (line.product !== 'new') return find(state.products, line.product);
+    const draft = line.newProduct;
+    if (!draft || typeof draft !== 'object') fail('Isi data produk baru.');
+    const purchase = channel === undefined;
+    return apply(state, 'product', {
+      name: draft.name, variant: draft.variant, category: draft.category,
+      retail: purchase ? draft.retail || 0 : channel === 'Toko' ? line.price : 0,
+      market: purchase ? draft.market || 0 : channel === 'Toko' ? 0 : line.price,
+      initialStock: purchase ? undefined : number(draft.initialStock, 'Stok fisik sebelum dijual', 1),
+      initialCost: draft.initialCost,
+    }, user);
+  }
   if (action === 'product') {
     allow('admin');
     const p = input.id ? find(state.products, input.id) : { id: id(), stock: 0, cost: 0 };
@@ -71,7 +84,7 @@ export function apply(state, action, input, user, files = []) {
   }
   if (action === 'purchase') {
     allow('admin');
-    const p = find(state.products, input.product);
+    const p = transactionProduct(input);
     const purchase = { id: id(), supplier: required(input.supplier, 'Supplier'), product: p.id, qty: number(input.qty, 'Jumlah', 1), cost: number(input.cost, 'Harga beli'), received: 0, receipts: [], at, actor };
     state.purchases.unshift(purchase);
     return purchase;
@@ -100,7 +113,7 @@ export function apply(state, action, input, user, files = []) {
     if (!Array.isArray(input.items) || !input.items.length) fail('Tambahkan barang.');
     const claimed = new Map();
     const items = input.items.map(line => {
-      const p = find(state.products, line.product);
+      const p = transactionProduct(line, channel);
       const qty = number(line.qty, 'Jumlah', 1);
       const parts = line.assemble && online && p.category === 'PC rakitan' ? [] : null;
       if (!parts) {
