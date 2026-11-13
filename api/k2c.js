@@ -86,6 +86,7 @@ export default async function handler(req, res) {
       }
       if (user.role === 'teknisi') {
         state.purchases = [];
+        delete state.suppliers;
         state.movements = [];
         state.sales = state.sales.filter(sale => sale.channel !== 'Toko');
         for (const sale of state.sales) {

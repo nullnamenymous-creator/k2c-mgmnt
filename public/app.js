@@ -11,7 +11,7 @@ const total = sale => sale.items.reduce((sum, item) => sum + item.price * item.q
 const modalCost = sale => sale.items.reduce((sum, item) => sum + (item.parts ? item.parts.reduce((cost, part) => cost + part.cost * part.qty, 0) : item.cost * item.qty), 0);
 const brand = '<div class="brand"><img src="/icon.svg" alt=""><div><strong>K2C Management</strong><small>K2C Komputindo</small></div></div>';
 const statuses = ['Pesanan masuk', 'Siap kirim', 'Dikirim', 'Retur diterima', 'Bukti retur lengkap', 'Retur diperiksa', 'Dibatalkan'];
-const menus = { home: 'Ringkasan', online: 'Marketplace', shop: 'Penjualan Toko', stock: 'Stok Barang', buy: 'Pembelian' };
+const menus = { home: 'Ringkasan', online: 'Marketplace', shop: 'Penjualan Toko', stock: 'Stok Barang', buy: 'Pembelian', suppliers: 'Supplier' };
 const marketplaces = ['Shopee', 'Tokopedia'];
 const marketTheme = channel => marketplaces.includes(channel) ? ' data-market="' + channel.toLowerCase() + '"' : '';
 const marketBadge = channel => '<span class="market-badge"' + marketTheme(channel) + '>' + esc(channel) + '</span>';
@@ -127,6 +127,11 @@ function pageRows() {
     ]);
     return table(columns, rows, 'Belum ada barang yang sesuai.', 'stock-sheet');
   }
+  if (view === 'suppliers') return table(['Supplier', 'WhatsApp', 'Pembelian', 'Aksi'], (state.suppliers || []).filter(s => matches(s.name, s.phone)).map(s => [
+    '<strong>' + esc(s.name) + '</strong>', '+' + esc(s.phone),
+    state.purchases.filter(purchase => purchase.supplierId === s.id).length,
+    '<div class="row">' + button('Riwayat', 'supplier-history', s.id) + button('Edit', 'supplier', s.id) + '</div>',
+  ]), 'Belum ada supplier.');
   return table(['Barang', 'Penerimaan', 'Harga beli', 'Aksi'], state.purchases.filter(p => matches(p.supplier, label(byId(state.products, p.product)))).map(p =>
     ['<strong>' + esc(label(byId(state.products, p.product))) + '</strong><small>' + esc(p.supplier + ' · ' + date(p.at)) + '</small>',
       '<strong>' + p.received + ' dari ' + p.qty + ' diterima</strong>' + (p.received < p.qty ? '<small>Sisa ' + (p.qty - p.received) + '</small>' : ''),
@@ -178,9 +183,9 @@ function render() {
     content = '<div class="stats">' + cards.map(s => '<button class="stat" data-action="queue" data-key="' + esc(s) + '"><span>' + esc(s === 'Pesanan masuk' ? 'Perlu dites' : s === 'Bukti retur lengkap' ? 'Perlu diperiksa' : s) + '</span><strong>' + online.filter(o => o.status === s).length + '</strong></button>').join('') +
       '</div>' + panel('Antrean pesanan', salesTable(online.filter(o => cards.includes(o.status)).slice(0, 10), true, 'Antrean kerja kosong.'));
   } else {
-    const titles = { online: ['Input pesanan', 'sale-new'], shop: ['Transaksi baru', 'sale-new'], stock: ['Tambah barang', 'product'], buy: ['Catat pembelian', 'purchase'] };
+    const titles = { online: ['Input pesanan', 'sale-new'], shop: ['Transaksi baru', 'sale-new'], stock: ['Tambah barang', 'product'], buy: ['Catat pembelian', 'purchase'], suppliers: ['Tambah supplier', 'supplier'] };
     if (admin && (view !== 'online' || marketplaces.includes(marketplace))) action = view === 'online' ? button('Input pesanan ' + marketplace, 'sale-new', marketplace, 'primary') : button(...titles[view], '', 'primary');
-    const placeholders = { online: 'Cari resi, nomor pesanan, atau pembeli', shop: 'Cari pembeli atau barang', stock: 'Cari barang atau varian', buy: 'Cari supplier atau barang' };
+    const placeholders = { online: 'Cari resi, nomor pesanan, atau pembeli', shop: 'Cari pembeli atau barang', stock: 'Cari barang atau varian', buy: 'Cari supplier atau barang', suppliers: 'Cari nama atau nomor WhatsApp' };
     const statusFilter = view === 'online' ? '<div>' + select('status', 'Status', [['', 'Semua status'], ...statuses.map(s => [s, s])], filter) + '</div>' : '';
     content = '<section class="panel"><div class="toolbar' + (view === 'online' ? ' market-toolbar' : '') + '">' + search(placeholders[view]) + statusFilter + '</div><div id="rows">' + pageRows() + '</div></section>';
     if (view === 'online') {
@@ -212,7 +217,7 @@ function open(title, body) {
 
 function form(title, action, body, id = '', submit = 'Simpan') {
   open(title, '<form data-submit="' + action + '" data-id="' + esc(id) + '">' + body +
-    '<p class="error" role="alert"></p><div class="actions">' + (id && action !== 'product' ? button('Kembali', action === 'receive' ? 'purchase-detail' : 'sale-detail', id) : '') +
+    '<p class="error" role="alert"></p><div class="actions">' + (id && !['product', 'supplier'].includes(action) ? button('Kembali', action === 'receive' ? 'purchase-detail' : 'sale-detail', id) : '') +
     '<button class="button primary">' + esc(submit) + '</button></div></form>');
 }
 
@@ -438,9 +443,19 @@ function saleDetail(id) {
     '<details class="record-history"><summary>Riwayat status</summary><ul class="detail-list">' + history.join('') + '</ul></details></div>');
 }
 
+function purchaseNote(p) {
+  const item = p.itemLabel || label(byId(state.products, p.product));
+  return ['NOTA PEMBELIAN — K2C Komputindo', 'No. ' + p.id.slice(0, 8).toUpperCase(),
+    'Tanggal: ' + date(p.at), 'Supplier: ' + p.supplier, '', 'Barang: ' + item,
+    'Jumlah: ' + p.qty + ' unit', 'Harga satuan: ' + fmt(p.cost), 'Total: ' + fmt(p.qty * p.cost),
+    '', 'Mohon cek rincian pembelian ini. Terima kasih.'].join('\n');
+}
+
 function purchaseDetail(id) {
   const p = byId(state.purchases, id);
-  open('Pembelian · ' + p.supplier, '<div class="details"><p><strong>' + esc(label(byId(state.products, p.product))) + '</strong> · ' + fmt(p.cost) + ' per unit</p>' +
+  const note = purchaseNote(p);
+  const whatsapp = p.supplierPhone ? '<a class="button primary" target="_blank" rel="noopener noreferrer" href="https://wa.me/' + esc(p.supplierPhone) + '?text=' + esc(encodeURIComponent(note)) + '">Buka WhatsApp supplier</a>' : '';
+  open('Pembelian · ' + p.supplier, '<div class="details"><div class="row">' + whatsapp + '</div><label>Nota pembelian<textarea rows="10" readonly>' + esc(note) + '</textarea></label><p><strong>' + esc(label(byId(state.products, p.product))) + '</strong> · ' + fmt(p.cost) + ' per unit</p>' +
     '<p>Dipesan ' + p.qty + ' · Diterima ' + p.received + ' · Sisa ' + (p.qty - p.received) + '</p>' +
     (p.receipts.length ? '<section><h3>Riwayat penerimaan</h3><ul class="detail-list">' + p.receipts.map(r => '<li>' + r.qty + ' unit · ' + esc(r.actor + ' · ' + date(r.at)) + '</li>').join('') + '</ul></section>' : '') +
     (p.received < p.qty ? '<div class="actions">' + button('Terima barang', 'receive', id, 'primary') + '</div>' : '') + '</div>');
@@ -491,6 +506,20 @@ async function click(action, key, element) {
   }
   if (action === 'sale-detail') return saleDetail(key);
   if (action === 'purchase-detail') return purchaseDetail(key);
+  if (action === 'supplier') {
+    const supplier = byId(state.suppliers || [], key);
+    return form(supplier ? 'Edit supplier' : 'Tambah supplier', action,
+      field('name', 'Nama supplier', supplier?.name, 'text', 'required') +
+      field('phone', 'Nomor WhatsApp', supplier?.phone, 'tel', 'required placeholder="081234567890"'), key);
+  }
+  if (action === 'supplier-history') {
+    const supplier = byId(state.suppliers || [], key);
+    const purchases = state.purchases.filter(purchase => purchase.supplierId === key);
+    return open('Pembelian · ' + supplier.name, table(['Barang', 'Jumlah', 'Total', 'Aksi'], purchases.map(purchase => [
+      esc(purchase.itemLabel || label(byId(state.products, purchase.product))), purchase.qty,
+      fmt(purchase.qty * purchase.cost), button('Lihat nota', 'purchase-detail', purchase.id),
+    ]), 'Belum ada pembelian yang terhubung ke supplier ini.'));
+  }
   if (action === 'line-add') return dialog.querySelector('#lines').insertAdjacentHTML('beforeend', line());
   if (action === 'line-remove') {
     if (dialog.querySelectorAll('.line-item').length > 1) element.closest('.line-item').remove();
@@ -517,7 +546,12 @@ async function click(action, key, element) {
       '<div class="grid">' + amount('retail', 'Harga toko', p?.retail) + amount('market', 'Harga marketplace', p?.market) + '</div>' + initial, key);
   }
   if (action === 'purchase') {
-    return form('Catat pembelian', 'purchase', field('supplier', 'Supplier', '', 'text', 'required') +
+    const suppliers = state.suppliers || [];
+    if (!suppliers.length) return form('Tambah supplier untuk pembelian', 'supplier',
+      '<input type="hidden" name="continuePurchase" value="yes">' +
+      field('name', 'Nama supplier', '', 'text', 'required') +
+      field('phone', 'Nomor WhatsApp', '', 'tel', 'required placeholder="081234567890"'), '', 'Simpan & lanjut pembelian');
+    return form('Catat pembelian', 'purchase', select('supplier', 'Supplier', [['', 'Pilih supplier'], ...suppliers.map(s => [s.id, s.name])]) +
       transactionProduct() + '<div class="grid">' + amount('qty', 'Jumlah dipesan', 1, 1) + amount('cost', 'Harga beli per unit') + '</div>');
   }
   if (action === 'receive') {
@@ -661,6 +695,7 @@ document.addEventListener('submit', async event => {
       }
     }
     form.dataset.submission ||= globalThis.crypto.randomUUID?.() || Array.from(globalThis.crypto.getRandomValues(new Uint8Array(18)), byte => byte.toString(16).padStart(2, '0')).join('');
+    if (action === 'purchase') body.purchaseId = form.dataset.submission;
     await api('action/' + action, body, form.dataset.submission);
     if (action === 'sale' && view === 'online') {
       marketplace = values.channel;
@@ -669,8 +704,10 @@ document.addEventListener('submit', async event => {
     dialog.close();
     notify('Data tersimpan.');
     await refresh();
-    if (action === 'receive') purchaseDetail(id);
-    else if (id && action !== 'product') saleDetail(id);
+    if (action === 'supplier' && values.continuePurchase === 'yes') await click('purchase', '');
+    else if (action === 'purchase') purchaseDetail(body.purchaseId);
+    else if (action === 'receive') purchaseDetail(id);
+    else if (id && !['product', 'supplier'].includes(action)) saleDetail(id);
   } catch (error) {
     if (error.status === 401) chooseRole(error.message);
     else if (dialog.open) {

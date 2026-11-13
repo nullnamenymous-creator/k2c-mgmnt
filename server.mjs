@@ -84,6 +84,7 @@ const server = createServer({ IncomingMessage: LimitedRequest }, async (req, res
       }
       if (user.role !== 'admin') {
         state.purchases = [];
+        delete state.suppliers;
         state.movements = [];
         for (const p of state.products) for (const key of ['cost', 'retail', 'market']) delete p[key];
         state.sales = state.sales.filter(s => s.channel !== 'Toko');

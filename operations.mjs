@@ -84,10 +84,27 @@ export function apply(state, action, input, user, files = []) {
     move(p.id, target - p.stock, reason, null);
     return p;
   }
+  if (action === 'supplier') {
+    allow('admin');
+    const suppliers = state.suppliers ??= [];
+    const supplier = input.id ? find(suppliers, input.id) : { id: id() };
+    const name = required(input.name, 'Nama supplier');
+    const rawPhone = required(input.phone, 'Nomor WhatsApp');
+    let phone = rawPhone.replace(/[+\s().-]/g, '');
+    if (phone.startsWith('0')) phone = '62' + phone.slice(1);
+    if (!/^[1-9][0-9]{7,14}$/.test(phone)) fail('Isi nomor WhatsApp yang valid, misalnya 081234567890.');
+    Object.assign(supplier, { name, phone });
+    if (!input.id) suppliers.push(supplier);
+    return supplier;
+  }
   if (action === 'purchase') {
     allow('admin');
     const p = transactionProduct(input);
-    const purchase = { id: id(), supplier: required(input.supplier, 'Supplier'), product: p.id, qty: number(input.qty, 'Jumlah', 1), cost: number(input.cost, 'Harga beli'), received: 0, receipts: [], at, actor };
+    const supplier = find(state.suppliers ?? [], input.supplier);
+    const purchaseId = input.purchaseId || id();
+    if (typeof purchaseId !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(purchaseId)) fail('Referensi pembelian tidak valid.');
+    if (state.purchases.some(row => row.id === purchaseId)) fail('Pembelian sudah tersimpan.');
+    const purchase = { id: purchaseId, supplier: supplier.name, supplierId: supplier.id, supplierPhone: supplier.phone, itemLabel: [p.name, p.variant].filter(Boolean).join(' / '), product: p.id, qty: number(input.qty, 'Jumlah', 1), cost: number(input.cost, 'Harga beli'), received: 0, receipts: [], at, actor };
     state.purchases.unshift(purchase);
     return purchase;
   }
