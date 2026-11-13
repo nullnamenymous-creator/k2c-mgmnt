@@ -172,6 +172,33 @@ function renderTechnician() {
     search('Cari nomor pesanan atau resi') + '<div id="rows">' + technicianOrders() + '</div></div></main>';
 }
 
+function dashboard(online) {
+  const available = product => Math.max(0, product.stock - product.reserved);
+  const low = state.products.filter(product => available(product) <= 3)
+    .sort((a, b) => available(a) - available(b) || label(a).localeCompare(label(b), 'id'));
+  const units = state.products.reduce((sum, product) => sum + available(product), 0);
+  const channels = ['Toko', ...marketplaces, ...new Set(online.map(sale => sale.channel).filter(channel => !marketplaces.includes(channel)))];
+  const inventory = panel('Stok barang', table(['Indikator', 'Jumlah'], [
+    ['Varian tercatat', state.products.length],
+    ['Unit tersedia', units],
+    ['Unit dipesan', state.products.reduce((sum, product) => sum + product.reserved, 0)],
+    ['Varian stok menipis (1–3 unit)', low.filter(product => available(product) > 0).length],
+    ['Varian stok habis', low.filter(product => !available(product)).length],
+  ], '', 'summary-table'));
+  const sales = panel('Penjualan & pesanan per kanal · semua tanggal', table(['Kanal', 'Transaksi', 'Total transaksi'], channels.map(channel => {
+    const records = state.sales.filter(sale => sale.channel === channel && sale.status !== 'Dibatalkan');
+    return [channel === 'Toko' ? 'Toko' : marketBadge(channel), records.length, fmt(records.reduce((sum, sale) => sum + total(sale), 0))];
+  }), '', 'summary-table'));
+  const stock = panel('Stok siap jual menipis dan habis', table(['Barang / Varian', 'Tersedia', 'Dipesan', 'Aksi'], low.map(product => [
+    esc(label(product)), available(product) || '<span class="tag warn">Habis</span>', product.reserved,
+    button('Lihat stok', 'stock-find', product.id),
+  ]), 'Semua varian punya lebih dari 3 unit tersedia.', 'summary-table'));
+  const queue = panel('Antrean marketplace', table(['Tahap', 'Pesanan', 'Aksi'], technicianStages.map(([status, title]) => [
+    esc(title), online.filter(sale => sale.status === status).length, button('Lihat', 'queue', status),
+  ]), '', 'summary-table'));
+  return '<div class="summary-grid">' + inventory + sales + '</div>' + queue + stock;
+}
+
 function render() {
   if (can('teknisi')) return renderTechnician();
   const admin = can('admin');
@@ -182,10 +209,8 @@ function render() {
   let marketNav = '';
   let action = '';
   if (view === 'home') {
-    const cards = can('teknisi', 'admin') ? ['Pesanan masuk', 'Siap kirim', 'Retur diterima', 'Bukti retur lengkap'] : ['Siap kirim', 'Retur diterima'];
-    if (admin) action = button('Input pesanan', 'sale-new', 'online', 'primary');
-    content = '<div class="stats">' + cards.map(s => '<button class="stat" data-action="queue" data-key="' + esc(s) + '"><span>' + esc(s === 'Pesanan masuk' ? 'Perlu dites' : s === 'Bukti retur lengkap' ? 'Perlu diperiksa' : s) + '</span><strong>' + online.filter(o => o.status === s).length + '</strong></button>').join('') +
-      '</div>' + panel('Antrean pesanan', salesTable(online.filter(o => cards.includes(o.status)).slice(0, 10), true, 'Antrean kerja kosong.'));
+    action = button('Input pesanan', 'sale-new', 'online', 'primary');
+    content = dashboard(online);
   } else {
     const titles = { online: ['Input pesanan', 'sale-new'], shop: ['Transaksi baru', 'sale-new'], stock: ['Tambah barang', 'product'], buy: ['Catat pembelian', 'purchase'], suppliers: ['Tambah supplier', 'supplier'] };
     if (admin && (view !== 'online' || marketplaces.includes(marketplace))) action = view === 'online' ? button('Input pesanan ' + marketplace, 'sale-new', marketplace, 'primary') : button(...titles[view], '', 'primary');
@@ -511,6 +536,11 @@ async function click(action, key, element) {
     marketplaceFilters.set(marketplace, { query, filter });
     marketplace = key;
     ({ query = '', filter = '' } = marketplaceFilters.get(key) || {});
+    return render();
+  }
+  if (action === 'stock-find') {
+    view = 'stock';
+    query = label(byId(state.products, key));
     return render();
   }
   if (action === 'navigate' || action === 'queue') {

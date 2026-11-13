@@ -262,3 +262,11 @@ dialog::backdrop{background:#0f1d35a6}
   .shell>main{flex:1}
   .market-nav{padding:10px 12px 0}
 }
+
+.summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.summary-table th,.summary-table td{padding:9px 12px}
+.summary-table th:first-child,.summary-table td:first-child{width:auto}
+.summary-table th:not(:first-child),.summary-table td:not(:first-child){text-align:right}
+.summary-table td:not(:first-child){font-variant-numeric:tabular-nums}
+.summary-table td:last-child .button{white-space:nowrap}
+@media(max-width:1050px){.summary-grid{grid-template-columns:minmax(0,1fr)}}
