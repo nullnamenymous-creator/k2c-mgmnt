@@ -531,11 +531,10 @@ async function click(action, key, element) {
   if (action === 'purchase-pdf') {
     const purchase = byId(state.purchases, key);
     const number = purchase.id.slice(0, 8).toUpperCase();
-    const bytes = purchasePdf(['No. ' + number, 'Tanggal: ' + date(purchase.at), 'Supplier: ' + purchase.supplier, '',
-      ...purchaseItems(purchase).flatMap((item, index) => [
-        (index + 1) + '. ' + purchaseItemLabel(item),
-        item.qty + ' unit x ' + fmt(item.cost) + ' = ' + fmt(item.qty * item.cost),
-      ]), '', 'TOTAL: ' + fmt(purchaseTotal(purchase))]);
+    const bytes = purchasePdf({
+      number, date: date(purchase.at), supplier: purchase.supplier,
+      items: purchaseItems(purchase).map(item => ({ name: purchaseItemLabel(item), qty: item.qty, cost: item.cost })),
+    });
     const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
     const link = document.createElement('a');
     link.href = url;
