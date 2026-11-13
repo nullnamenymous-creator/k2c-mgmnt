@@ -119,7 +119,7 @@ export default async function handler(req, res) {
         validateFile(file, kinds[index]);
         return { id: randomUUID(), name: file.name, size: file.size, kind: file.kind };
       });
-      apply(state, body.action, { id: body.id, tracking: body.tracking }, user, files);
+      apply(state, body.action, { id: body.id, tracking: body.tracking, skipQc: body.skipQc }, user, files);
       const urls = await Promise.all(files.map(async file => {
         const signed = await requestJson('/storage/v1/object/upload/sign/' + bucket + '/' + file.id, {});
         return base + '/storage/v1' + signed.url;
@@ -133,7 +133,7 @@ export default async function handler(req, res) {
       const prior = await (await upstream('/rest/v1/k2c_submissions?select=token&session_id=eq.' + session.id + '&token=eq.' + token)).json();
       if (prior.length) return reply({ ok: true });
       let files = [];
-      if (Object.hasOwn(proofTypes, action)) {
+      if (Object.hasOwn(proofTypes, action) && !(action === 'ship' && body.skipHandover === 'yes' && !body.ticket)) {
         const ticket = verify(body.ticket);
         if (ticket?.purpose !== 'upload' || ticket.session !== session.id || ticket.action !== action || ticket.order !== body.id) fail('Sesi unggahan berakhir. Coba simpan lagi.');
         files = ticket.files;

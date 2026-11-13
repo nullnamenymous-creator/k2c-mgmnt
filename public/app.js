@@ -412,6 +412,7 @@ function saleDetail(id) {
   const online = s.channel !== 'Toko';
   const actions = [];
   if (online && can('teknisi') && s.status === 'Pesanan masuk') actions.push(button('Rekam video tes', 'ready', id, 'primary'));
+  if (online && s.status === 'Pesanan masuk') actions.push(button('Lewati QC & catat pengiriman', 'ship', id));
   if (s.status === 'Siap kirim') actions.push(button('Catat serah terima', 'ship', id, 'primary'));
   if (s.status === 'Dikirim') actions.push(button('Paket kembali', 'return-start', id));
   if (s.status === 'Retur diterima') actions.push(button('Unggah bukti retur', 'return-evidence', id, 'primary'));
@@ -424,7 +425,7 @@ function saleDetail(id) {
       '</small>' + (can('teknisi') && s.status === 'Pesanan masuk' ? button('Catat komponen', 'parts', id + ':' + i) : '') : '') + '</li>');
   const evidenceLabels = { ready: 'Video tes', ship: 'Foto serah terima', 'return-evidence': 'Bukti retur' };
   const proofs = s.evidence.map(f => '<li><a href="/api/evidence/' + esc(f.id) + '" download>' + esc(evidenceLabels[f.stage] + ' · ' + f.name) + '</a><small class="cell-sub">' + esc(f.actor + ' · ' + date(f.at)) + '</small></li>');
-  const history = s.history.map(h => '<li>' + esc(h.status + ' · ' + h.actor + ' · ' + date(h.at)) + '</li>');
+  const history = s.history.map(h => '<li>' + esc([h.status, h.skipQc && 'QC tanpa video', h.skipHandover && 'Tanpa foto serah terima', h.actor, date(h.at)].filter(Boolean).join(' · ')) + '</li>');
   const summary = admin ? '<p>Total jual <strong>' + fmt(total(s)) + '</strong> · Modal barang <strong>' + fmt(modalCost(s)) + '</strong></p>' : '';
   const settlement = admin && s.settlement ? '<p>Dana cair <strong>' + fmt(s.settlement.payout) + '</strong> · Potongan ' + fmt(s.settlement.fee) +
     (s.returnResult ? '' : ' · Selisih terhadap modal ' + fmt(s.settlement.payout - modalCost(s))) + '</p>' : '';
@@ -531,8 +532,15 @@ async function click(action, key, element) {
   const s = byId(state.sales, key);
   if (!s) return;
   if (action === 'ready') return recordTest(key);
-  if (action === 'ship') return form('Serah terima paket', action, field('tracking', 'Nomor resi', s.tracking, 'text', 'required') +
-    proof('Foto bukti serah terima ke kurir atau gerai', 'image/*'), key, 'Simpan & tandai dikirim');
+  if (action === 'ship') {
+    const skipQc = s.status === 'Pesanan masuk';
+    return form(skipQc ? 'Lewati QC & catat pengiriman' : 'Serah terima paket', action,
+      (skipQc ? '<input type="hidden" name="skipQc" value="yes"><p>Pesanan akan ditandai dikirim tanpa video QC. Gunakan jika paket sudah dikirim.</p>' : '') +
+      field('tracking', 'Nomor resi', s.tracking, 'text', 'required') +
+      '<div class="handover-proof">' + proof('Foto bukti serah terima ke kurir atau gerai', 'image/*') + '</div>' +
+      '<label class="check"><input type="checkbox" name="skipHandover" value="yes">Lewati foto serah terima</label>',
+      key, 'Simpan & tandai dikirim');
+  }
   if (action === 'return-start') return form('Terima paket kembali', action, '<p>Konfirmasi paket sudah diterima. Ambil dua foto paket sebelum dibuka dan rekam video unboxing.</p>', key, 'Tandai retur diterima');
   if (action === 'return-evidence') return form('Bukti paket kembali', action, proof('Foto paket 1', 'image/*') + proof('Foto paket 2', 'image/*') + proof('Video unboxing (MP4)', 'video/mp4,.mp4'), key);
   if (action === 'return-result') return form('Pemeriksaan retur', action, s.items.map(item => amount('quantities', label(item) + ' · Jumlah siap jual dari ' + item.qty, 0)).join('') +
@@ -561,6 +569,11 @@ document.addEventListener('input', event => {
 document.addEventListener('change', event => {
   const target = event.target;
   if (target.name === 'proof' && target.form) delete target.form.cloudTicket;
+  if (target.name === 'skipHandover') {
+    const proof = target.form.querySelector('.handover-proof');
+    proof.hidden = proof.querySelector('input').disabled = target.checked;
+    delete target.form.cloudTicket;
+  }
   if (['category', 'newCategory'].includes(target.name)) {
     const label = target.closest('.category-field').querySelector('.category-name');
     label.hidden = label.querySelector('input').disabled = target.value !== customCategory;
@@ -632,7 +645,7 @@ document.addEventListener('submit', async event => {
         if (uploads.some(file => file.size > state.uploadLimit)) throw new Error('Ukuran setiap file harus di bawah 45 MB.');
         if (!form.cloudTicket) {
           const signed = await api('upload', {
-            action, id, tracking: values.tracking,
+            action, id, tracking: values.tracking, skipQc: values.skipQc,
             files: uploads.map(file => ({ name: file.name, size: file.size, kind: file.type })),
           });
           for (const [i, file] of uploads.entries()) {

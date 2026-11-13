@@ -158,11 +158,15 @@ export function apply(state, action, input, user, files = []) {
     history(sale, 'Siap kirim');
   } else if (action === 'ship') {
     allow('admin', 'teknisi');
-    step(['Siap kirim']);
+    const skipQc = input.skipQc === 'yes' && sale.status === 'Pesanan masuk';
+    const skipHandover = input.skipHandover === 'yes';
+    step(skipQc ? ['Pesanan masuk'] : ['Siap kirim']);
+    if (skipQc && sale.items.some(item => item.parts && !item.parts.length)) fail('Catat komponen rakitan sebelum menandai pesanan dikirim.');
     sale.tracking = required(input.tracking, 'Nomor resi');
-    attach(['image']);
+    attach(skipHandover ? [] : ['image']);
     for (const item of sale.items) if (!item.parts) move(item.product, -item.qty, 'Pengiriman marketplace', sale.id);
     history(sale, 'Dikirim');
+    if (skipQc || skipHandover) Object.assign(sale.history.at(-1), { skipQc, skipHandover });
   } else if (action === 'return-start') {
     allow('admin', 'teknisi');
     step(['Dikirim']);
