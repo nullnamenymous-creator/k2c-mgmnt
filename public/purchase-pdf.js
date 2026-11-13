@@ -3,14 +3,16 @@ export function purchasePdf(lines) {
   const pages = [];
   const safe = value => [...value].map(c => c.codePointAt(0) <= 255 ? c : '?').join('').replace(/[\\()]/g, '\\$&');
   const wrapped = lines.flatMap(line => String(line).replace(/[\r\n\t]/g, ' ').match(/.{1,82}(?:\s|$)|.{1,82}/g) || ['']);
-  for (let offset = 0; offset < wrapped.length; offset += 37) {
+  for (let offset = 0; offset < wrapped.length; offset += 35) {
     const page = objects.length + 1;
     pages.push(page + ' 0 R');
-    const commands = ['BT /F1 20 Tf 48 788 Td (NOTA PEMBELIAN) Tj ET',
-      'BT /F1 11 Tf 48 765 Td (K2C Komputindo) Tj ET',
-      '0.2 0.3 0.45 RG 48 752 m 547 752 l S',
-      ...wrapped.slice(offset, offset + 37).map((line, index) =>
-        'BT /F1 11 Tf 48 ' + (728 - 18 * index) + ' Td (' + safe(line.trim()) + ') Tj ET'),
+    const commands = ['BT /F1 20 Tf 48 717 Td (NOTA PEMBELIAN) Tj ET',
+      'BT /F1 22 Tf 48 790 Td (K2C KOMPUTINDO) Tj ET',
+      'BT /F1 11 Tf 48 768 Td (KP. RUMBIA PEBAYURAN KAB BEKASI) Tj ET',
+      'BT /F1 11 Tf 48 751 Td (081298406844) Tj ET',
+      '0.2 0.3 0.45 RG 48 739 m 547 739 l S',
+      ...wrapped.slice(offset, offset + 35).map((line, index) =>
+        'BT /F1 11 Tf 48 ' + (692 - 18 * index) + ' Td (' + safe(line.trim()) + ') Tj ET'),
       'BT /F1 9 Tf 48 42 Td (Halaman ' + pages.length + ') Tj ET'].join('\n');
     objects.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents ' + (page + 1) + ' 0 R >>',
       '<< /Length ' + commands.length + ' >>\nstream\n' + commands + '\nendstream');
