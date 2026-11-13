@@ -194,3 +194,27 @@ dialog::backdrop{background:#0f1d35a6}
 .tech-order[data-market] .tech-order-head strong{color:var(--market-ink)}
 
 .category-field{display:grid;gap:8px;min-width:0}
+
+.sales-list table{table-layout:fixed}
+.sales-list :is(th,td):first-child{width:27%}
+.sales-list :is(th,td):last-child{width:90px;text-align:right}
+.sales-list.has-total :is(th,td):nth-last-child(2){width:150px;text-align:right}
+.sales-list.has-status :is(th,td):nth-child(3){width:155px}
+.sales-list .sale-total{white-space:nowrap;font-variant-numeric:tabular-nums}
+.sales-list .tag,.sales-list td:last-child .button{white-space:nowrap}
+.sales-list td:last-child .button{min-width:60px}
+.market-toolbar{align-items:end}
+.market-toolbar>div{min-width:165px}
+@media(max-width:940px){
+  .sales-list table,.sales-list tbody{display:block}
+  .sales-list thead{position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:hidden}
+  .sales-list tbody tr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 16px;padding:14px;border-top:1px solid var(--line)}
+  .sales-list tbody tr>td:nth-child(n){display:block;width:auto;padding:0;border:0;text-align:left;min-width:0}
+  .sales-list tbody tr>td:nth-child(-n+2){grid-column:1/-1}
+  .sales-list tbody tr>td:last-child{grid-column:2;grid-row:1;justify-self:end}
+  .sales-list tbody tr>td:first-child{grid-column:1}
+  .sales-list tbody tr>td:nth-child(3):not(:last-child){grid-column:1}
+  .sales-list.has-status.has-total tbody tr>td:nth-child(4){grid-column:2;text-align:right}
+  .sales-list .mobile-label{display:block;color:var(--muted);font-size:11px;margin-bottom:2px}
+  .sales-list td:first-child .mobile-label,.sales-list td:last-child .mobile-label{display:none}
+}

@@ -97,10 +97,10 @@ function salesTable(rows, online, empty = 'Belum ada transaksi.') {
     const goods = esc(label(s.items[0])) + '<small>' + esc(s.items[0].qty) + ' unit' + (s.items.length > 1 ? ' · +' + (s.items.length - 1) + ' baris' : '') + '</small>';
     const row = [first + '<small>' + esc(s.buyer || 'Pembeli umum') + '</small>', goods];
     if (online) row.push(stage(s.status));
-    if (can('admin')) row.push(fmt(total(s)));
+    if (can('admin')) row.push('<span class="sale-total">' + fmt(total(s)) + '</span>');
     row.push(button('Buka', 'sale-detail', s.id));
     return row;
-  }), empty);
+  }), empty, 'sales-list' + (online ? ' has-status' : '') + (can('admin') ? ' has-total' : ''));
 }
 
 const panel = (title, content) => '<section class="panel"><div class="panel-head"><h2>' + esc(title) + '</h2></div>' + content + '</section>';
@@ -182,7 +182,7 @@ function render() {
     if (admin && (view !== 'online' || marketplaces.includes(marketplace))) action = view === 'online' ? button('Input pesanan ' + marketplace, 'sale-new', marketplace, 'primary') : button(...titles[view], '', 'primary');
     const placeholders = { online: 'Cari resi, nomor pesanan, atau pembeli', shop: 'Cari pembeli atau barang', stock: 'Cari barang atau varian', buy: 'Cari supplier atau barang' };
     const statusFilter = view === 'online' ? '<div>' + select('status', 'Status', [['', 'Semua status'], ...statuses.map(s => [s, s])], filter) + '</div>' : '';
-    content = '<section class="panel"><div class="toolbar">' + search(placeholders[view]) + statusFilter + '</div><div id="rows">' + pageRows() + '</div></section>';
+    content = '<section class="panel"><div class="toolbar' + (view === 'online' ? ' market-toolbar' : '') + '">' + search(placeholders[view]) + statusFilter + '</div><div id="rows">' + pageRows() + '</div></section>';
     if (view === 'online') {
       const channels = [...marketplaces, ...new Set(online.map(sale => sale.channel).filter(channel => !marketplaces.includes(channel)))];
       content = '<nav class="market-tabs" aria-label="Pilih marketplace">' + channels.map(channel =>
