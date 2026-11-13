@@ -402,7 +402,7 @@ function newProductFields(sale) {
     '<div class="grid">' + productNameField('newName') + field('newVariant', 'Varian') +
     categoryField('newCategory') +
     (sale ? amount('newStock', 'Stok fisik sebelum dijual', '', 1) + amount('newCost', 'Modal per unit (opsional)', '', 0, false) :
-      amount('newRetail', 'Harga toko (opsional)', '', 0, false) + amount('newMarket', 'Harga marketplace (opsional)', '', 0, false)) +
+      '') +
     '</div></fieldset>';
 }
 
@@ -411,7 +411,7 @@ function newProductFrom(container) {
   if (!fieldset || fieldset.disabled) return undefined;
   const value = name => fieldset.querySelector('[name=' + name + ']')?.value;
   return { name: productNameValue(fieldset, 'newName'), variant: value('newVariant'), category: categoryValue(fieldset, 'newCategory'),
-    initialStock: value('newStock'), initialCost: value('newCost'), retail: value('newRetail'), market: value('newMarket') };
+    initialStock: value('newStock'), initialCost: value('newCost') };
 }
 
 function purchaseLine() {
