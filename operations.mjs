@@ -141,7 +141,7 @@ export function apply(state, action, input, user, files = []) {
     sale.evidence.push(...files.map(({ id, kind, name }) => ({ id, kind, name, actor, at, stage: action })));
   }
   if (action === 'parts') {
-    allow('teknisi');
+    allow('admin', 'teknisi');
     step(['Pesanan masuk']);
     const item = sale.items[number(input.line, 'Baris barang')];
     if (!item?.parts) fail('Barang ini tidak menunggu rakitan.');
@@ -151,7 +151,7 @@ export function apply(state, action, input, user, files = []) {
     move(p.id, -qty, 'Pemakaian komponen', sale.id);
     item.parts.push({ product: p.id, qty, cost: p.cost });
   } else if (action === 'ready') {
-    allow('teknisi');
+    allow('admin', 'teknisi');
     step(['Pesanan masuk']);
     if (sale.items.some(item => item.parts && !item.parts.length)) fail('Catat pemakaian komponen rakitan dulu.');
     attach(['video']);

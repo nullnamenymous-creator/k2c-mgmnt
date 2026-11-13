@@ -411,7 +411,7 @@ function saleDetail(id) {
   const admin = can('admin');
   const online = s.channel !== 'Toko';
   const actions = [];
-  if (online && can('teknisi') && s.status === 'Pesanan masuk') actions.push(button('Rekam video tes', 'ready', id, 'primary'));
+  if (online && s.status === 'Pesanan masuk') actions.push(button('Unggah video QC', 'ready-upload', id, 'primary'), button('Rekam video QC', 'ready', id));
   if (online && s.status === 'Pesanan masuk') actions.push(button('Lewati QC & catat pengiriman', 'ship', id));
   if (s.status === 'Siap kirim') actions.push(button('Catat serah terima', 'ship', id, 'primary'));
   if (s.status === 'Dikirim') actions.push(button('Paket kembali', 'return-start', id));
@@ -422,7 +422,7 @@ function saleDetail(id) {
   const items = s.items.map((item, i) => '<li><strong>' + esc(label(item)) + '</strong> × ' + item.qty +
     (admin ? ' · ' + fmt(item.price) : '') + (item.parts ? '<small class="cell-sub">Rakitan pesanan' +
       (item.parts.length ? ' · ' + item.parts.map(part => esc(label(byId(state.products, part.product))) + ' × ' + part.qty).join(', ') : '') +
-      '</small>' + (can('teknisi') && s.status === 'Pesanan masuk' ? button('Catat komponen', 'parts', id + ':' + i) : '') : '') + '</li>');
+      '</small>' + (can('admin', 'teknisi') && s.status === 'Pesanan masuk' ? button('Catat komponen', 'parts', id + ':' + i) : '') : '') + '</li>');
   const evidenceLabels = { ready: 'Video tes', ship: 'Foto serah terima', 'return-evidence': 'Bukti retur' };
   const proofs = s.evidence.map(f => '<li><a href="/api/evidence/' + esc(f.id) + '" download>' + esc(evidenceLabels[f.stage] + ' · ' + f.name) + '</a><small class="cell-sub">' + esc(f.actor + ' · ' + date(f.at)) + '</small></li>');
   const history = s.history.map(h => '<li>' + esc([h.status, h.skipQc && 'QC tanpa video', h.skipHandover && 'Tanpa foto serah terima', h.actor, date(h.at)].filter(Boolean).join(' · ')) + '</li>');
@@ -531,6 +531,7 @@ async function click(action, key, element) {
   }
   const s = byId(state.sales, key);
   if (!s) return;
+  if (action === 'ready-upload') return form('Unggah video QC', 'ready', proof('Video QC (MP4)', 'video/mp4,.mp4'), key, 'Simpan & tandai siap kirim');
   if (action === 'ready') return recordTest(key);
   if (action === 'ship') {
     const skipQc = s.status === 'Pesanan masuk';
@@ -632,10 +633,8 @@ document.addEventListener('submit', async event => {
     if (action === 'purchase') values.newProduct = newProductFrom(form);
     if (action === 'return-result') values.quantities = fields.getAll('quantities');
     const uploads = fields.getAll('proof');
-    if (action === 'ready') {
-      if (!form.recordedVideo) throw new Error('Rekam video tes dulu.');
-      uploads.push(form.recordedVideo);
-    }
+    if (action === 'ready' && form.recordedVideo) uploads.push(form.recordedVideo);
+    if (action === 'ready' && !uploads.length) throw new Error('Unggah atau rekam video QC dulu.');
     delete values.proof;
     let body = values;
     if (uploads.length) {
