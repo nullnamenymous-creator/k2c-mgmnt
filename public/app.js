@@ -1,3 +1,5 @@
+import { purchasePdf } from './purchase-pdf.js';
+
 const app = document.querySelector('#app');
 const dialog = document.querySelector('#dialog');
 const notice = document.querySelector('#notice');
@@ -132,11 +134,12 @@ function pageRows() {
     state.purchases.filter(purchase => purchase.supplierId === s.id).length,
     '<div class="row">' + button('Riwayat', 'supplier-history', s.id) + button('Edit', 'supplier', s.id) + '</div>',
   ]), 'Belum ada supplier.');
-  return table(['Barang', 'Penerimaan', 'Harga beli', 'Aksi'], state.purchases.filter(p => matches(p.supplier, label(byId(state.products, p.product)))).map(p =>
-    ['<strong>' + esc(label(byId(state.products, p.product))) + '</strong><small>' + esc(p.supplier + ' · ' + date(p.at)) + '</small>',
-      '<strong>' + p.received + ' dari ' + p.qty + ' diterima</strong>' + (p.received < p.qty ? '<small>Sisa ' + (p.qty - p.received) + '</small>' : ''),
-      fmt(p.cost) + '<small>per unit</small>', p.received < p.qty ? '<div class="row">' + button('Terima barang', 'receive', p.id, 'primary') + button('Detail', 'purchase-detail', p.id) + '</div>' : button('Detail', 'purchase-detail', p.id)]
-  ), 'Belum ada pembelian.');
+  return table(['Barang', 'Jumlah', 'Total', 'Aksi'], state.purchases.filter(p => matches(p.supplier, ...purchaseItems(p).map(purchaseItemLabel))).map(p => [
+    '<strong>' + esc(purchaseItemLabel(purchaseItems(p)[0])) + '</strong><small>' +
+      (purchaseItems(p).length > 1 ? '+' + (purchaseItems(p).length - 1) + ' baris barang · ' : '') + esc(p.supplier + ' · ' + date(p.at)) + '</small>',
+    purchaseItems(p).reduce((sum, item) => sum + item.qty, 0) + ' unit', fmt(purchaseTotal(p)),
+    button('Detail', 'purchase-detail', p.id),
+  ]), 'Belum ada pembelian.');
 }
 
 function technicianOrders() {
@@ -217,7 +220,7 @@ function open(title, body) {
 
 function form(title, action, body, id = '', submit = 'Simpan') {
   open(title, '<form data-submit="' + action + '" data-id="' + esc(id) + '">' + body +
-    '<p class="error" role="alert"></p><div class="actions">' + (id && !['product', 'supplier'].includes(action) ? button('Kembali', action === 'receive' ? 'purchase-detail' : 'sale-detail', id) : '') +
+    '<p class="error" role="alert"></p><div class="actions">' + (id && !['product', 'supplier'].includes(action) ? button('Kembali', ['receive', 'purchase-delete'].includes(action) ? 'purchase-detail' : 'sale-detail', id) : '') +
     '<button class="button primary">' + esc(submit) + '</button></div></form>');
 }
 
@@ -404,6 +407,12 @@ function newProductFrom(container) {
     initialStock: value('newStock'), initialCost: value('newCost'), retail: value('newRetail'), market: value('newMarket') };
 }
 
+function purchaseLine() {
+  return '<div class="line-item">' + transactionProduct() + '<div class="grid">' +
+    amount('qty', 'Jumlah', 1, 1) + amount('cost', 'Harga beli per unit') + '</div><div>' +
+    button('Hapus baris', 'line-remove') + '</div></div>';
+}
+
 function line() {
   return '<div class="line-item">' + transactionProduct(true) + '<div class="grid">' +
     amount('qty', 'Jumlah', 1, 1) + amount('price', 'Harga jual per unit') + '</div>' +
@@ -443,22 +452,17 @@ function saleDetail(id) {
     '<details class="record-history"><summary>Riwayat status</summary><ul class="detail-list">' + history.join('') + '</ul></details></div>');
 }
 
-function purchaseNote(p) {
-  const item = p.itemLabel || label(byId(state.products, p.product));
-  return ['NOTA PEMBELIAN — K2C Komputindo', 'No. ' + p.id.slice(0, 8).toUpperCase(),
-    'Tanggal: ' + date(p.at), 'Supplier: ' + p.supplier, '', 'Barang: ' + item,
-    'Jumlah: ' + p.qty + ' unit', 'Harga satuan: ' + fmt(p.cost), 'Total: ' + fmt(p.qty * p.cost),
-    '', 'Mohon cek rincian pembelian ini. Terima kasih.'].join('\n');
-}
+const purchaseItems = purchase => purchase.items ?? [purchase];
+const purchaseItemLabel = item => item.itemLabel || label(byId(state.products, item.product));
+const purchaseTotal = purchase => purchaseItems(purchase).reduce((sum, item) => sum + item.qty * item.cost, 0);
 
 function purchaseDetail(id) {
-  const p = byId(state.purchases, id);
-  const note = purchaseNote(p);
-  const whatsapp = p.supplierPhone ? '<a class="button primary" target="_blank" rel="noopener noreferrer" href="https://wa.me/' + esc(p.supplierPhone) + '?text=' + esc(encodeURIComponent(note)) + '">Buka WhatsApp supplier</a>' : '';
-  open('Pembelian · ' + p.supplier, '<div class="details"><div class="row">' + whatsapp + '</div><label>Nota pembelian<textarea rows="10" readonly>' + esc(note) + '</textarea></label><p><strong>' + esc(label(byId(state.products, p.product))) + '</strong> · ' + fmt(p.cost) + ' per unit</p>' +
-    '<p>Dipesan ' + p.qty + ' · Diterima ' + p.received + ' · Sisa ' + (p.qty - p.received) + '</p>' +
-    (p.receipts.length ? '<section><h3>Riwayat penerimaan</h3><ul class="detail-list">' + p.receipts.map(r => '<li>' + r.qty + ' unit · ' + esc(r.actor + ' · ' + date(r.at)) + '</li>').join('') + '</ul></section>' : '') +
-    (p.received < p.qty ? '<div class="actions">' + button('Terima barang', 'receive', id, 'primary') + '</div>' : '') + '</div>');
+  const purchase = byId(state.purchases, id);
+  open('Pembelian · ' + purchase.supplier, '<div class="details">' +
+    table(['Barang', 'Jumlah', 'Harga beli', 'Subtotal'], purchaseItems(purchase).map(item => [
+      esc(purchaseItemLabel(item)), item.qty, fmt(item.cost), fmt(item.qty * item.cost),
+    ]), 'Belum ada barang.') + (purchaseItems(purchase).some(item => item.received < item.qty) ? '<p>Transaksi lama · ' + purchaseItems(purchase).reduce((sum, item) => sum + item.qty - item.received, 0) + ' unit belum tercatat masuk stok.</p>' : '') + '<p><strong>Total ' + fmt(purchaseTotal(purchase)) + '</strong></p><div class="actions">' +
+    button('Hapus pembelian', 'purchase-delete', id) + button('Unduh nota PDF', 'purchase-pdf', id, 'primary') + '</div></div>');
 }
 
 async function click(action, key, element) {
@@ -506,6 +510,28 @@ async function click(action, key, element) {
   }
   if (action === 'sale-detail') return saleDetail(key);
   if (action === 'purchase-detail') return purchaseDetail(key);
+  if (action === 'purchase-pdf') {
+    const purchase = byId(state.purchases, key);
+    const number = purchase.id.slice(0, 8).toUpperCase();
+    const bytes = purchasePdf(['No. ' + number, 'Tanggal: ' + date(purchase.at), 'Supplier: ' + purchase.supplier, '',
+      ...purchaseItems(purchase).flatMap((item, index) => [
+        (index + 1) + '. ' + purchaseItemLabel(item),
+        item.qty + ' unit x ' + fmt(item.cost) + ' = ' + fmt(item.qty * item.cost),
+      ]), '', 'TOTAL: ' + fmt(purchaseTotal(purchase))]);
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'Nota-Pembelian-' + number + '.pdf';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    return;
+  }
+  if (action === 'purchase-delete') {
+    return form('Hapus pembelian', action,
+      '<p>Nota ini akan dihapus. Jumlah barang yang sudah masuk dari pembelian ini akan dikurangi dari stok.</p>',
+      key, 'Hapus pembelian');
+  }
+
   if (action === 'supplier') {
     const supplier = byId(state.suppliers || [], key);
     return form(supplier ? 'Edit supplier' : 'Tambah supplier', action,
@@ -516,11 +542,11 @@ async function click(action, key, element) {
     const supplier = byId(state.suppliers || [], key);
     const purchases = state.purchases.filter(purchase => purchase.supplierId === key);
     return open('Pembelian · ' + supplier.name, table(['Barang', 'Jumlah', 'Total', 'Aksi'], purchases.map(purchase => [
-      esc(purchase.itemLabel || label(byId(state.products, purchase.product))), purchase.qty,
-      fmt(purchase.qty * purchase.cost), button('Lihat nota', 'purchase-detail', purchase.id),
+      esc(purchaseItems(purchase).map(purchaseItemLabel).join(', ')), purchaseItems(purchase).reduce((sum, item) => sum + item.qty, 0),
+      fmt(purchaseTotal(purchase)), button('Lihat nota', 'purchase-detail', purchase.id),
     ]), 'Belum ada pembelian yang terhubung ke supplier ini.'));
   }
-  if (action === 'line-add') return dialog.querySelector('#lines').insertAdjacentHTML('beforeend', line());
+  if (action === 'line-add') return dialog.querySelector('#lines').insertAdjacentHTML('beforeend', dialog.querySelector('form').dataset.submit === 'purchase' ? purchaseLine() : line());
   if (action === 'line-remove') {
     if (dialog.querySelectorAll('.line-item').length > 1) element.closest('.line-item').remove();
     return;
@@ -552,11 +578,7 @@ async function click(action, key, element) {
       field('name', 'Nama supplier', '', 'text', 'required') +
       field('phone', 'Nomor WhatsApp', '', 'tel', 'required placeholder="081234567890"'), '', 'Simpan & lanjut pembelian');
     return form('Catat pembelian', 'purchase', select('supplier', 'Supplier', [['', 'Pilih supplier'], ...suppliers.map(s => [s.id, s.name])]) +
-      transactionProduct() + '<div class="grid">' + amount('qty', 'Jumlah dipesan', 1, 1) + amount('cost', 'Harga beli per unit') + '</div>');
-  }
-  if (action === 'receive') {
-    const p = byId(state.purchases, key);
-    return form('Terima barang', 'receive', amount('qty', 'Jumlah diterima', p.qty - p.received, 1), key);
+      '<div id="lines">' + purchaseLine() + '</div><div>' + button('Tambah barang', 'line-add') + '</div>');
   }
   if (action === 'parts') {
     const [id, index] = key.split(':');
@@ -628,7 +650,7 @@ document.addEventListener('change', event => {
     const fieldset = (target.closest('.line-item') || target.form).querySelector('.new-product');
     if (fieldset) fieldset.hidden = fieldset.disabled = target.value !== 'new';
   }
-  if (target.name === 'product' && target.closest('.line-item')) {
+  if (target.name === 'product' && target.form.dataset.submit === 'sale' && target.closest('.line-item')) {
     const row = target.closest('.line-item');
     const p = byId(state.products, target.value);
     const online = target.form.elements.channel.value !== 'Toko';
@@ -664,7 +686,10 @@ document.addEventListener('submit', async event => {
       values.name = productNameValue(form, 'name');
       values.category = categoryValue(form, 'category');
     }
-    if (action === 'purchase') values.newProduct = newProductFrom(form);
+    if (action === 'purchase') values.items = Array.from(form.querySelectorAll('.line-item'), row => ({
+      product: row.querySelector('[name=product]').value, newProduct: newProductFrom(row),
+      qty: row.querySelector('[name=qty]').value, cost: row.querySelector('[name=cost]').value,
+    }));
     if (action === 'return-result') values.quantities = fields.getAll('quantities');
     const uploads = fields.getAll('proof');
     if (action === 'ready' && form.recordedVideo) uploads.push(form.recordedVideo);
@@ -707,7 +732,7 @@ document.addEventListener('submit', async event => {
     if (action === 'supplier' && values.continuePurchase === 'yes') await click('purchase', '');
     else if (action === 'purchase') purchaseDetail(body.purchaseId);
     else if (action === 'receive') purchaseDetail(id);
-    else if (id && !['product', 'supplier'].includes(action)) saleDetail(id);
+    else if (id && !['product', 'supplier', 'purchase-delete'].includes(action)) saleDetail(id);
   } catch (error) {
     if (error.status === 401) chooseRole(error.message);
     else if (dialog.open) {

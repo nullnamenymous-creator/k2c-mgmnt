@@ -1,5 +1,5 @@
-const name = 'k2c-shell-v15';
-const shell = ['/', '/app.js', '/app.css', '/icon.svg', '/icon-192.png', '/icon-512.png', '/manifest.webmanifest'];
+const name = 'k2c-shell-v16';
+const shell = ['/', '/app.js', '/purchase-pdf.js', '/app.css', '/icon.svg', '/icon-192.png', '/icon-512.png', '/manifest.webmanifest'];
 self.addEventListener('install', event => event.waitUntil(caches.open(name).then(cache => cache.addAll(shell)).then(() => self.skipWaiting())));
 self.addEventListener('activate', event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('k2c-shell-') && key !== name).map(key => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', event => {

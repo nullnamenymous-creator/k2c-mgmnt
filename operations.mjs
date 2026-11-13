@@ -99,25 +99,53 @@ export function apply(state, action, input, user, files = []) {
   }
   if (action === 'purchase') {
     allow('admin');
-    const p = transactionProduct(input);
     const supplier = find(state.suppliers ?? [], input.supplier);
     const purchaseId = input.purchaseId || id();
     if (typeof purchaseId !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(purchaseId)) fail('Referensi pembelian tidak valid.');
     if (state.purchases.some(row => row.id === purchaseId)) fail('Pembelian sudah tersimpan.');
-    const purchase = { id: purchaseId, supplier: supplier.name, supplierId: supplier.id, supplierPhone: supplier.phone, itemLabel: [p.name, p.variant].filter(Boolean).join(' / '), product: p.id, qty: number(input.qty, 'Jumlah', 1), cost: number(input.cost, 'Harga beli'), received: 0, receipts: [], at, actor };
+    const lines = input.items ?? [input];
+    if (!Array.isArray(lines) || !lines.length) fail('Tambahkan barang pembelian.');
+    const items = lines.map(line => {
+      const product = transactionProduct(line);
+      return { product: product.id, itemLabel: [product.name, product.variant].filter(Boolean).join(' / '),
+        qty: number(line.qty, 'Jumlah', 1), cost: number(line.cost, 'Harga beli'), received: 0 };
+    });
+    const purchase = { id: purchaseId, supplier: supplier.name, supplierId: supplier.id,
+      supplierPhone: supplier.phone, items, receipts: [], at, actor };
     state.purchases.unshift(purchase);
-    return purchase;
+    return apply(state, 'receive', { id: purchase.id, quantities: items.map(item => item.qty) }, user);
   }
-  if (action === 'receive') {
+  if (action === 'receive' || action === 'purchase-delete') {
     allow('admin');
     const purchase = find(state.purchases, input.id);
-    const p = find(state.products, purchase.product);
-    const qty = number(input.qty, 'Jumlah diterima', 1);
-    if (qty > purchase.qty - purchase.received) fail('Jumlah melebihi sisa pembelian.');
-    p.cost = Math.round((p.stock * p.cost + qty * purchase.cost) / (p.stock + qty));
-    move(p.id, qty, 'Penerimaan pembelian', purchase.id);
-    purchase.received += qty;
-    purchase.receipts.push({ qty, at, actor });
+    const items = purchase.items ?? [purchase];
+    if (action === 'purchase-delete') {
+      const totals = new Map();
+      for (const item of items) totals.set(item.product, (totals.get(item.product) || 0) + item.received);
+      for (const [product, qty] of totals) {
+        if (qty && free(state, find(state.products, product)) < qty) fail('Stok tersedia tidak cukup untuk membalik penerimaan pembelian ini.');
+      }
+      for (const [product, qty] of totals) {
+        if (qty) move(product, -qty, 'Pembelian dihapus', purchase.id);
+      }
+      state.purchases.splice(state.purchases.indexOf(purchase), 1);
+      return purchase;
+    }
+    const quantities = input.quantities ?? [input.qty];
+    if (!Array.isArray(quantities) || quantities.length !== items.length) fail('Isi jumlah diterima per barang.');
+    const amounts = quantities.map((qty, index) => {
+      const received = number(qty, 'Jumlah diterima');
+      if (received > items[index].qty - items[index].received) fail('Jumlah melebihi sisa pembelian.');
+      return received;
+    });
+    if (!amounts.some(Boolean)) fail('Isi minimal satu jumlah diterima.');
+    items.forEach((item, index) => {
+      const qty = amounts[index];
+      if (!qty) return;
+      move(item.product, qty, 'Penerimaan pembelian', purchase.id);
+      item.received += qty;
+      purchase.receipts.push({ qty, itemLabel: item.itemLabel, at, actor });
+    });
     return purchase;
   }
   if (action === 'sale') {

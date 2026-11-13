@@ -7,6 +7,7 @@ import { apply, fail, inspection, reserved } from './operations.mjs';
 
 const files = new Map(Object.entries({
   '/': ['index.html', 'text/html; charset=utf-8'],
+  '/purchase-pdf.js': ['purchase-pdf.js', 'text/javascript; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
   '/app.css': ['app.css', 'text/css; charset=utf-8'],
   '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json'],
