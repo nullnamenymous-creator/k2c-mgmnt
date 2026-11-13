@@ -358,10 +358,33 @@ function categoryValue(container, name) {
   return selected === customCategory ? container.querySelector('[name=' + name + 'Custom]').value.trim() : selected;
 }
 
+const customProductName = '__new_product_name__';
+
+function productNameField(name, current) {
+  if (current) return field(name, 'Nama barang', current, 'text', 'readonly');
+  const names = new Map();
+  for (const product of state.products) {
+    const key = product.name.trim().toLowerCase();
+    if (!names.has(key)) names.set(key, product.name);
+  }
+  const choices = [...names.values()].sort((a, b) => a.localeCompare(b, 'id'));
+  const create = !choices.length;
+  return '<div class="category-field">' + select(name, 'Nama barang', [
+    ['', 'Pilih nama barang'], ...choices.map(value => [value, value]), [customProductName, '+ Buat nama barang baru'],
+  ], create ? customProductName : '') + '<label class="product-name-input"' + (create ? '' : ' hidden') +
+    '>Nama barang baru<input type="text" name="' + name + 'Custom" autocomplete="off" required' +
+    (create ? '' : ' disabled') + '></label></div>';
+}
+
+function productNameValue(container, name) {
+  const selected = container.querySelector('[name=' + name + ']').value;
+  return selected === customProductName ? container.querySelector('[name=' + name + 'Custom]').value.trim() : selected;
+}
+
 function transactionProduct(sale = false) {
   return select('product', 'Barang / Varian', [...options(), ['new', '+ Buat produk baru']], state.products.length ? '' : 'new') +
     '<fieldset class="new-product"' + (state.products.length ? ' hidden disabled' : '') + '><legend>Produk baru</legend>' +
-    '<div class="grid">' + field('newName', 'Nama barang', '', 'text', 'required') + field('newVariant', 'Varian') +
+    '<div class="grid">' + productNameField('newName') + field('newVariant', 'Varian') +
     categoryField('newCategory') +
     (sale ? amount('newStock', 'Stok fisik sebelum dijual', '', 1) + amount('newCost', 'Modal per unit (opsional)', '', 0, false) :
       amount('newRetail', 'Harga toko (opsional)', '', 0, false) + amount('newMarket', 'Harga marketplace (opsional)', '', 0, false)) +
@@ -372,7 +395,7 @@ function newProductFrom(container) {
   const fieldset = container.querySelector('.new-product');
   if (!fieldset || fieldset.disabled) return undefined;
   const value = name => fieldset.querySelector('[name=' + name + ']')?.value;
-  return { name: value('newName'), variant: value('newVariant'), category: categoryValue(fieldset, 'newCategory'),
+  return { name: productNameValue(fieldset, 'newName'), variant: value('newVariant'), category: categoryValue(fieldset, 'newCategory'),
     initialStock: value('newStock'), initialCost: value('newCost'), retail: value('newRetail'), market: value('newMarket') };
 }
 
@@ -487,7 +510,7 @@ async function click(action, key, element) {
     const canSetInitial = !p || (!p.stock && !p.reserved && !state.movements.some(m => m.product === p.id));
     const initial = canSetInitial ? '<fieldset><legend>Stok awal (opsional)</legend><div class="grid">' +
       amount('initialStock', 'Jumlah yang sudah ada', '', 0, false) + amount('initialCost', 'Modal per unit', '', 0, false) + '</div></fieldset>' : '';
-    return form(p ? 'Edit barang' : 'Tambah barang', 'product', field('name', 'Nama barang', p?.name, 'text', 'required') +
+    return form(p ? 'Edit barang' : 'Tambah barang', 'product', productNameField('name', p?.name) +
       field('variant', 'Varian', p?.variant) +
       categoryField('category', p?.category) +
       '<div class="grid">' + amount('retail', 'Harga toko', p?.retail) + amount('market', 'Harga marketplace', p?.market) + '</div>' + initial, key);
@@ -543,6 +566,12 @@ document.addEventListener('change', event => {
     label.hidden = label.querySelector('input').disabled = target.value !== customCategory;
     if (!label.hidden) label.querySelector('input').focus();
   }
+  if (target.matches('select[name=name], select[name=newName]')) {
+    const label = target.closest('.category-field').querySelector('.product-name-input');
+    const input = label.querySelector('input');
+    label.hidden = input.disabled = target.value !== customProductName;
+    if (!label.hidden) input.focus();
+  }
   if (target.name === 'status') {
     filter = target.value;
     document.querySelector('#rows').innerHTML = pageRows();
@@ -583,7 +612,10 @@ document.addEventListener('submit', async event => {
       price: row.querySelector('[name=price]').value,
       assemble: row.querySelector('[name=assemble]').checked,
     }));
-    if (action === 'product') values.category = categoryValue(form, 'category');
+    if (action === 'product') {
+      values.name = productNameValue(form, 'name');
+      values.category = categoryValue(form, 'category');
+    }
     if (action === 'purchase') values.newProduct = newProductFrom(form);
     if (action === 'return-result') values.quantities = fields.getAll('quantities');
     const uploads = fields.getAll('proof');

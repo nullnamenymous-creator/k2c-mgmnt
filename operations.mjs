@@ -57,7 +57,9 @@ export function apply(state, action, input, user, files = []) {
   if (action === 'product') {
     allow('admin');
     const p = input.id ? find(state.products, input.id) : { id: id(), stock: 0, cost: 0 };
-    const name = required(input.name, 'Nama barang');
+    const requestedName = required(input.name, 'Nama barang');
+    const existingName = state.products.find(row => row.name.trim().toLowerCase() === requestedName.toLowerCase());
+    const name = input.id ? p.name : existingName?.name ?? requestedName;
     const variant = clean(input.variant);
     if (state.products.some(row => row.id !== p.id && row.name.toLowerCase() === name.toLowerCase() && row.variant.toLowerCase() === variant.toLowerCase())) fail('Barang dan varian sudah ada.');
     Object.assign(p, { name, variant, category: required(input.category, 'Kategori'), retail: number(input.retail, 'Harga toko'), market: number(input.market, 'Harga marketplace') });
