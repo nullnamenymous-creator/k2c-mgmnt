@@ -343,11 +343,26 @@ function recordTest(id) {
 
 const categories = ['Laptop', 'PC rakitan', 'PC built-up', 'Monitor', 'Spare part', 'Aksesori', 'Lainnya'];
 
+const customCategory = '__new_category__';
+
+function categoryField(name, current) {
+  const choices = [...new Set([...categories, ...state.products.map(product => product.category).filter(Boolean)])];
+  return '<div class="category-field">' + select(name, 'Kategori', [
+    ...choices.map(category => [category, category]), [customCategory, '+ Buat kategori baru'],
+  ], current) + '<label class="category-name" hidden>Nama kategori baru<input type="text" name="' +
+    name + 'Custom" maxlength="80" required disabled></label></div>';
+}
+
+function categoryValue(container, name) {
+  const selected = container.querySelector('[name=' + name + ']').value;
+  return selected === customCategory ? container.querySelector('[name=' + name + 'Custom]').value.trim() : selected;
+}
+
 function transactionProduct(sale = false) {
   return select('product', 'Barang / Varian', [...options(), ['new', '+ Buat produk baru']], state.products.length ? '' : 'new') +
     '<fieldset class="new-product"' + (state.products.length ? ' hidden disabled' : '') + '><legend>Produk baru</legend>' +
     '<div class="grid">' + field('newName', 'Nama barang', '', 'text', 'required') + field('newVariant', 'Varian') +
-    select('newCategory', 'Kategori', categories.map(item => [item, item])) +
+    categoryField('newCategory') +
     (sale ? amount('newStock', 'Stok fisik sebelum dijual', '', 1) + amount('newCost', 'Modal per unit (opsional)', '', 0, false) :
       amount('newRetail', 'Harga toko (opsional)', '', 0, false) + amount('newMarket', 'Harga marketplace (opsional)', '', 0, false)) +
     '</div></fieldset>';
@@ -357,7 +372,7 @@ function newProductFrom(container) {
   const fieldset = container.querySelector('.new-product');
   if (!fieldset || fieldset.disabled) return undefined;
   const value = name => fieldset.querySelector('[name=' + name + ']')?.value;
-  return { name: value('newName'), variant: value('newVariant'), category: value('newCategory'),
+  return { name: value('newName'), variant: value('newVariant'), category: categoryValue(fieldset, 'newCategory'),
     initialStock: value('newStock'), initialCost: value('newCost'), retail: value('newRetail'), market: value('newMarket') };
 }
 
@@ -474,7 +489,7 @@ async function click(action, key, element) {
       amount('initialStock', 'Jumlah yang sudah ada', '', 0, false) + amount('initialCost', 'Modal per unit', '', 0, false) + '</div></fieldset>' : '';
     return form(p ? 'Edit barang' : 'Tambah barang', 'product', field('name', 'Nama barang', p?.name, 'text', 'required') +
       field('variant', 'Varian', p?.variant) +
-      select('category', 'Kategori', categories.map(s => [s, s]), p?.category) +
+      categoryField('category', p?.category) +
       '<div class="grid">' + amount('retail', 'Harga toko', p?.retail) + amount('market', 'Harga marketplace', p?.market) + '</div>' + initial, key);
   }
   if (action === 'purchase') {
@@ -523,6 +538,11 @@ document.addEventListener('input', event => {
 document.addEventListener('change', event => {
   const target = event.target;
   if (target.name === 'proof' && target.form) delete target.form.cloudTicket;
+  if (['category', 'newCategory'].includes(target.name)) {
+    const label = target.closest('.category-field').querySelector('.category-name');
+    label.hidden = label.querySelector('input').disabled = target.value !== customCategory;
+    if (!label.hidden) label.querySelector('input').focus();
+  }
   if (target.name === 'status') {
     filter = target.value;
     document.querySelector('#rows').innerHTML = pageRows();
@@ -563,6 +583,7 @@ document.addEventListener('submit', async event => {
       price: row.querySelector('[name=price]').value,
       assemble: row.querySelector('[name=assemble]').checked,
     }));
+    if (action === 'product') values.category = categoryValue(form, 'category');
     if (action === 'purchase') values.newProduct = newProductFrom(form);
     if (action === 'return-result') values.quantities = fields.getAll('quantities');
     const uploads = fields.getAll('proof');

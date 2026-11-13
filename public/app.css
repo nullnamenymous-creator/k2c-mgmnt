@@ -192,3 +192,5 @@ dialog::backdrop{background:#0f1d35a6}
 :is(.market-tab,.tech-tabs button)[data-market][aria-current="page"]{border-color:var(--market-accent);box-shadow:inset 0 -3px var(--market-accent)}
 .tech-order[data-market]{border-left:4px solid var(--market-accent)}
 .tech-order[data-market] .tech-order-head strong{color:var(--market-ink)}
+
+.category-field{display:grid;gap:8px;min-width:0}
