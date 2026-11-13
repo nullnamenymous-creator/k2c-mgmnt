@@ -125,7 +125,7 @@ function pageRows() {
       p.reserved,
       fmt(p.retail),
       fmt(p.market),
-      button('Edit', 'product', p.id),
+      '<div class="row">' + button('Edit', 'product', p.id) + button('Komponen', 'recipe', p.id) + '</div>' + (p.recipe?.length ? '<small>Bisa dirakit: ' + Math.max(0, Math.min(...p.recipe.map(line => { const part = byId(state.products, line.product); return part ? Math.floor((part.stock - part.reserved) / line.qty) : 0; }))) + ' paket</small>' : ''),
     ]);
     return table(columns, rows, 'Belum ada barang yang sesuai.', 'stock-sheet');
   }
@@ -220,7 +220,7 @@ function open(title, body) {
 
 function form(title, action, body, id = '', submit = 'Simpan') {
   open(title, '<form data-submit="' + action + '" data-id="' + esc(id) + '">' + body +
-    '<p class="error" role="alert"></p><div class="actions">' + (id && !['product', 'supplier'].includes(action) ? button('Kembali', ['receive', 'purchase-delete'].includes(action) ? 'purchase-detail' : 'sale-detail', id) : '') +
+    '<p class="error" role="alert"></p><div class="actions">' + (id && !['product', 'supplier', 'recipe', 'build-stock'].includes(action) ? button('Kembali', ['receive', 'purchase-delete'].includes(action) ? 'purchase-detail' : 'sale-detail', id) : '') +
     '<button class="button primary">' + esc(submit) + '</button></div></form>');
 }
 
@@ -422,9 +422,16 @@ function purchaseLine() {
     '><td colspan="5">' + newProductFields(false) + '</td></tr></tbody>';
 }
 
+function recipeLine(id, line = {}) {
+  const options = [['', 'Pilih komponen'], ...state.products.filter(p => p.id !== id && !p.recipe?.length).map(p => [p.id, label(p)])];
+  return '<div class="recipe-line">' + select('component', 'Barang / Varian', options, line.product) +
+    amount('componentQty', 'Jumlah per paket', line.qty ?? 1, 1) + button('Hapus', 'recipe-remove') + '</div>';
+}
+
 function line() {
   return '<div class="line-item">' + transactionProduct(true) + '<div class="grid">' +
     amount('qty', 'Jumlah', 1, 1) + amount('price', 'Harga jual per unit') + '</div>' +
+    '<label class="check ready-stock" hidden><input name="readyStock" type="checkbox">Ambil dari stok paket siap jual</label>' +
     '<label class="check assembly" hidden><input name="assemble" type="checkbox">Rakit untuk pesanan ini</label>' +
     '<div>' + button('Hapus baris', 'line-remove') + '</div></div>';
 }
@@ -443,12 +450,13 @@ function saleDetail(id) {
   if (admin && ['Dikirim', 'Retur diterima', 'Bukti retur lengkap', 'Retur diperiksa'].includes(s.status)) actions.push(button('Catat dana cair', 'settlement', id));
   if (admin && ['Pesanan masuk', 'Siap kirim'].includes(s.status)) actions.push(button('Batalkan pesanan', 'cancel', id));
   const items = s.items.map((item, i) => '<li><strong>' + esc(label(item)) + '</strong> × ' + item.qty +
-    (admin ? ' · ' + fmt(item.price) : '') + (item.parts ? '<small class="cell-sub">Rakitan pesanan' +
+    (admin ? ' · ' + fmt(item.price) : '') + (item.components ? '<small class="cell-sub">Komponen paket</small><ul class="detail-list">' +
+      item.components.map((part, index) => '<li><div class="row">' + esc(label(byId(state.products, part.product))) + ' × ' + part.qty + (s.status === 'Pesanan masuk' ? button('Ganti', 'component-swap', id + ':' + i + ':' + index) : '') + '</div></li>').join('') + '</ul>' : '') + (item.parts ? '<small class="cell-sub">Rakitan pesanan' +
       (item.parts.length ? ' · ' + item.parts.map(part => esc(label(byId(state.products, part.product))) + ' × ' + part.qty).join(', ') : '') +
       '</small>' + (can('admin', 'teknisi') && s.status === 'Pesanan masuk' ? button('Catat komponen', 'parts', id + ':' + i) : '') : '') + '</li>');
   const evidenceLabels = { ready: 'Video tes', ship: 'Foto serah terima', 'return-evidence': 'Bukti retur' };
   const proofs = s.evidence.map(f => '<li><a href="/api/evidence/' + esc(f.id) + '" download>' + esc(evidenceLabels[f.stage] + ' · ' + f.name) + '</a><small class="cell-sub">' + esc(f.actor + ' · ' + date(f.at)) + '</small></li>');
-  const history = s.history.map(h => '<li>' + esc([h.status, h.skipQc && 'QC tanpa video', h.skipHandover && 'Tanpa foto serah terima', h.actor, date(h.at)].filter(Boolean).join(' · ')) + '</li>');
+  const history = s.history.map(h => '<li>' + esc([h.status, h.skipQc && 'QC tanpa video', h.skipHandover && 'Tanpa foto serah terima', h.note, h.actor, date(h.at)].filter(Boolean).join(' · ')) + '</li>');
   const summary = admin ? '<p>Total jual <strong>' + fmt(total(s)) + '</strong> · Modal barang <strong>' + fmt(modalCost(s)) + '</strong></p>' : '';
   const settlement = admin && s.settlement ? '<p>Dana cair <strong>' + fmt(s.settlement.payout) + '</strong> · Potongan ' + fmt(s.settlement.fee) +
     (s.returnResult ? '' : ' · Selisih terhadap modal ' + fmt(s.settlement.payout - modalCost(s))) + '</p>' : '';
@@ -575,6 +583,18 @@ async function click(action, key, element) {
       field('buyer', 'Nama pembeli jika ada') + '<input type="hidden" name="channel" value="Toko">';
     return form(online ? 'Input pesanan ' + (channel || 'marketplace') : 'Transaksi toko', 'sale', header + '<div id="lines">' + line() + '</div><div>' + button('Tambah baris', 'line-add') + '</div>');
   }
+  if (action === 'recipe' || action === 'build-stock') {
+    const product = byId(state.products, key);
+    if (action === 'build-stock') return form('Rakit ke stok · ' + label(product), action,
+      '<p>Komponen akan keluar dari stok lepas dan paket jadi akan masuk stok siap jual.</p>' +
+      amount('qty', 'Jumlah paket', 1, 1), key);
+    return form('Komponen · ' + label(product), action,
+      '<p>Isi jumlah komponen untuk satu paket, termasuk aksesori dan bonus.</p><div id="recipe-lines">' +
+      (product.recipe || []).map(line => recipeLine(product.id, line)).join('') + '</div><div class="row">' +
+      button('Tambah komponen', 'recipe-add', key) + (product.recipe?.length ? button('Rakit ke stok', 'build-stock', key) : '') + '</div>', key);
+  }
+  if (action === 'recipe-add') return dialog.querySelector('#recipe-lines').insertAdjacentHTML('beforeend', recipeLine(key));
+  if (action === 'recipe-remove') return element.closest('.recipe-line').remove();
   if (action === 'product') {
     const p = byId(state.products, key);
     const canSetInitial = !p || (!p.stock && !p.reserved && !state.movements.some(m => m.product === p.id));
@@ -593,6 +613,15 @@ async function click(action, key, element) {
       field('phone', 'Nomor WhatsApp', '', 'tel', 'required placeholder="081234567890"'), '', 'Simpan & lanjut pembelian');
     return form('Catat pembelian', 'purchase', select('supplier', 'Supplier', [['', 'Pilih supplier'], ...suppliers.map(s => [s.id, s.name])]) +
       '<div class="purchase-sheet"><table id="lines"><thead><tr><th scope="col">Barang / Varian</th><th scope="col">Jumlah</th><th scope="col">Harga beli per unit</th><th scope="col">Subtotal</th><th scope="col">Aksi</th></tr></thead>' + purchaseLine() + '</table></div><div>' + button('Tambah barang', 'line-add') + '</div>');
+  }
+  if (action === 'component-swap') {
+    const [id, index, partIndex] = key.split(':');
+    const item = byId(state.sales, id).items[index];
+    const part = item.components[partIndex];
+    const choices = [['', 'Pilih pengganti'], ...state.products.filter(p => p.id !== item.product && p.id !== part.product && !p.recipe?.length).map(p => [p.id, label(p)])];
+    return form('Ganti komponen · ' + label(byId(state.products, part.product)), action,
+      '<input type="hidden" name="line" value="' + esc(index) + '"><input type="hidden" name="part" value="' + esc(partIndex) + '">' +
+      select('product', 'Barang pengganti (' + part.qty + ' unit)', choices), id);
   }
   if (action === 'parts') {
     const [id, index] = key.split(':');
@@ -614,7 +643,7 @@ async function click(action, key, element) {
   }
   if (action === 'return-start') return form('Terima paket kembali', action, '<p>Konfirmasi paket sudah diterima. Ambil dua foto paket sebelum dibuka dan rekam video unboxing.</p>', key, 'Tandai retur diterima');
   if (action === 'return-evidence') return form('Bukti paket kembali', action, proof('Foto paket 1', 'image/*') + proof('Foto paket 2', 'image/*') + proof('Video unboxing (MP4)', 'video/mp4,.mp4'), key);
-  if (action === 'return-result') return form('Pemeriksaan retur', action, s.items.map(item => amount('quantities', label(item) + ' · Jumlah siap jual dari ' + item.qty, 0)).join('') +
+  if (action === 'return-result') return form('Pemeriksaan retur', action, s.items.map(item => amount('quantities', label(item) + (item.components ? ' · Paket lengkap kembali siap jual dari ' : ' · Jumlah siap jual dari ') + item.qty, 0)).join('') +
     '<label>Hasil pemeriksaan<textarea name="note" required rows="3"></textarea></label>', key);
   if (action === 'settlement') return form('Dana cair marketplace', action, amount('fee', 'Potongan marketplace', s.settlement?.fee) + amount('payout', 'Dana yang benar-benar cair', s.settlement?.payout), key);
   if (action === 'cancel') {
@@ -679,7 +708,9 @@ document.addEventListener('change', event => {
     const p = byId(state.products, target.value);
     const online = target.form.elements.channel.value !== 'Toko';
     row.querySelector('[name=price]').value = p ? (online ? p.market : p.retail) : '';
-    row.querySelector('.assembly').hidden = !online || p?.category !== 'PC rakitan';
+    row.querySelector('.assembly').hidden = !online || p?.category !== 'PC rakitan' || Boolean(p.recipe?.length);
+    row.querySelector('.ready-stock').hidden = !online || !p?.recipe?.length;
+    row.querySelector('[name=readyStock]').checked = false;
     row.querySelector('[name=assemble]').checked = false;
   }
 });
@@ -705,6 +736,7 @@ document.addEventListener('submit', async event => {
       qty: row.querySelector('[name=qty]').value,
       price: row.querySelector('[name=price]').value,
       assemble: row.querySelector('[name=assemble]').checked,
+      readyStock: row.querySelector('[name=readyStock]').checked,
     }));
     if (action === 'product') {
       values.name = productNameValue(form, 'name');
@@ -713,6 +745,9 @@ document.addEventListener('submit', async event => {
     if (action === 'purchase') values.items = Array.from(form.querySelectorAll('.purchase-item'), row => ({
       product: row.querySelector('[name=product]').value, newProduct: newProductFrom(row),
       qty: row.querySelector('[name=qty]').value, cost: row.querySelector('[name=cost]').value,
+    }));
+    if (action === 'recipe') values.components = Array.from(form.querySelectorAll('.recipe-line'), row => ({
+      product: row.querySelector('[name=component]').value, qty: row.querySelector('[name=componentQty]').value,
     }));
     if (action === 'return-result') values.quantities = fields.getAll('quantities');
     const uploads = fields.getAll('proof');
@@ -756,7 +791,7 @@ document.addEventListener('submit', async event => {
     if (action === 'supplier' && values.continuePurchase === 'yes') await click('purchase', '');
     else if (action === 'purchase') purchaseDetail(body.purchaseId);
     else if (action === 'receive') purchaseDetail(id);
-    else if (id && !['product', 'supplier', 'purchase-delete'].includes(action)) saleDetail(id);
+    else if (id && !['product', 'supplier', 'purchase-delete', 'recipe', 'build-stock'].includes(action)) saleDetail(id);
   } catch (error) {
     if (error.status === 401) chooseRole(error.message);
     else if (dialog.open) {

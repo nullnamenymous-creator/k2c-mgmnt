@@ -94,7 +94,7 @@ export default async function handler(req, res) {
           for (const item of sale.items) {
             delete item.cost;
             delete item.price;
-            for (const part of item.parts || []) delete part.cost;
+            for (const part of [...(item.parts || []), ...(item.components || [])]) delete part.cost;
           }
         }
       }

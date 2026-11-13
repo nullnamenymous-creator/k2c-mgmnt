@@ -244,3 +244,6 @@ dialog::backdrop{background:#0f1d35a6}
   .purchase-sheet .purchase-new{display:block;padding:0 8px 8px;border:0}
   .purchase-sheet .purchase-new td{padding:0;border:0}
 }
+
+.recipe-line{display:grid;grid-template-columns:minmax(0,1fr) minmax(95px,130px) auto;gap:8px;align-items:end;padding:8px 0;border-bottom:1px solid var(--line)}
+@media(max-width:480px){.recipe-line{grid-template-columns:minmax(0,1fr) auto}.recipe-line label:first-child{grid-column:1/-1}}

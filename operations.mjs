@@ -14,10 +14,13 @@ function number(value, label, min = 0) {
   return Number(value);
 }
 const find = (rows, key) => rows.find(row => row.id === key) ?? fail('Data tidak ditemukan.', 404);
+function stockLines(item) {
+  return item.components ?? (item.parts ? [] : [item]);
+}
 const active = ['Pesanan masuk', 'Siap kirim'];
 export function reserved(state, product) {
   return state.sales.filter(s => s.channel !== 'Toko' && active.includes(s.status))
-    .flatMap(s => s.items).filter(item => item.product === product && !item.parts).reduce((sum, item) => sum + item.qty, 0);
+    .flatMap(s => s.items).flatMap(stockLines).filter(item => item.product === product).reduce((sum, item) => sum + item.qty, 0);
 }
 export function inspection(state, product) {
   return state.sales.filter(s => ['Retur diterima', 'Bukti retur lengkap'].includes(s.status))
@@ -53,6 +56,31 @@ export function apply(state, action, input, user, files = []) {
       initialStock: purchase ? undefined : number(draft.initialStock, 'Stok fisik sebelum dijual', 1),
       initialCost: draft.initialCost,
     }, user);
+  }
+  if (action === 'build-stock') {
+    allow('admin');
+    const product = find(state.products, input.id);
+    const qty = number(input.qty, 'Jumlah paket', 1);
+    if (!product.recipe?.length) fail('Isi daftar komponen paket dulu.');
+    const lines = product.recipe.map(line => ({ part: find(state.products, line.product), qty: number(line.qty * qty, 'Jumlah komponen', 1) }));
+    for (const line of lines) if (free(state, line.part) < line.qty) fail('Stok tersedia tidak cukup untuk ' + line.part.name + '.');
+    for (const line of lines) move(line.part.id, -line.qty, 'Perakitan paket', product.id);
+    move(product.id, qty, 'Paket siap jual', product.id);
+    return product;
+  }
+  if (action === 'recipe') {
+    allow('admin');
+    const product = find(state.products, input.id);
+    if (!Array.isArray(input.components)) fail('Daftar komponen tidak valid.');
+    const seen = new Set();
+    product.recipe = input.components.map(line => {
+      const component = find(state.products, line.product);
+      if (component.id === product.id || component.recipe?.length || seen.has(component.id)) fail('Pilih komponen berbeda yang bukan paket.');
+      seen.add(component.id);
+      return { product: component.id, qty: number(line.qty, 'Jumlah per paket', 1) };
+    });
+    if (product.recipe.length && state.products.some(other => other.recipe?.some(line => line.product === product.id))) fail('Barang ini sudah dipakai sebagai komponen paket lain.');
+    return product;
   }
   if (action === 'product') {
     allow('admin');
@@ -162,13 +190,19 @@ export function apply(state, action, input, user, files = []) {
     const items = input.items.map(line => {
       const p = transactionProduct(line, channel);
       const qty = number(line.qty, 'Jumlah', 1);
-      const parts = line.assemble && online && p.category === 'PC rakitan' ? [] : null;
-      if (!parts) {
-        const needed = (claimed.get(p.id) ?? 0) + qty;
-        if (free(state, p) < needed) fail('Stok tersedia tidak cukup untuk ' + p.name + '.');
-        claimed.set(p.id, needed);
+      const components = online && p.recipe?.length && !line.readyStock ? p.recipe.map(component => ({
+        product: component.product, qty: number(component.qty * qty, 'Jumlah komponen', 1),
+        cost: find(state.products, component.product).cost,
+      })) : undefined;
+      const parts = !p.recipe?.length && line.assemble && online && p.category === 'PC rakitan' ? [] : null;
+      for (const line of stockLines({ product: p.id, qty, parts, components })) {
+        const product = find(state.products, line.product);
+        const needed = (claimed.get(product.id) ?? 0) + line.qty;
+        if (free(state, product) < needed) fail('Stok tersedia tidak cukup untuk ' + product.name + '.');
+        claimed.set(product.id, needed);
       }
-      return { product: p.id, name: p.name, variant: p.variant, qty, price: number(line.price, 'Harga jual'), cost: parts ? 0 : p.cost, parts };
+      const cost = components ? components.reduce((sum, line) => sum + line.cost * line.qty, 0) / qty : parts ? 0 : p.cost;
+      return { product: p.id, name: p.name, variant: p.variant, qty, price: number(line.price, 'Harga jual'), cost, parts, ...(components ? { components } : {}) };
     });
     const sale = { id: id(), channel, order, tracking, buyer, items, history: [], evidence: [], at, actor };
     history(sale, online ? 'Pesanan masuk' : 'Selesai');
@@ -185,7 +219,21 @@ export function apply(state, action, input, user, files = []) {
     if (files.length !== kinds.length || kinds.some((kind, i) => kind === 'video' ? files[i].kind !== 'video/mp4' : !files[i].kind.startsWith('image/'))) fail('Lengkapi bukti sesuai jenis file yang diminta. Video harus MP4.');
     sale.evidence.push(...files.map(({ id, kind, name }) => ({ id, kind, name, actor, at, stage: action })));
   }
-  if (action === 'parts') {
+  if (action === 'component-swap') {
+    allow('admin', 'teknisi');
+    step(['Pesanan masuk']);
+    const item = sale.items[number(input.line, 'Baris pesanan')];
+    const part = item?.components?.[number(input.part, 'Baris komponen')];
+    if (!part) fail('Komponen pesanan tidak ditemukan.', 404);
+    const replacement = find(state.products, input.product);
+    if (replacement.id === part.product || replacement.id === item.product || replacement.recipe?.length) fail('Pilih barang pengganti yang berbeda dan bukan paket.');
+    if (free(state, replacement) < part.qty) fail('Stok tersedia tidak cukup untuk ' + replacement.name + '.');
+    const previous = find(state.products, part.product);
+    item.cost += (replacement.cost - (part.cost ?? previous.cost)) * part.qty / item.qty;
+    part.product = replacement.id;
+    part.cost = replacement.cost;
+    sale.history.push({ status: sale.status, actor, at, note: 'Komponen diganti: ' + previous.name + ' → ' + replacement.name });
+  } else if (action === 'parts') {
     allow('admin', 'teknisi');
     step(['Pesanan masuk']);
     const item = sale.items[number(input.line, 'Baris barang')];
@@ -209,7 +257,7 @@ export function apply(state, action, input, user, files = []) {
     if (skipQc && sale.items.some(item => item.parts && !item.parts.length)) fail('Catat komponen rakitan sebelum menandai pesanan dikirim.');
     sale.tracking = required(input.tracking, 'Nomor resi');
     attach(skipHandover ? [] : ['image']);
-    for (const item of sale.items) if (!item.parts) move(item.product, -item.qty, 'Pengiriman marketplace', sale.id);
+    for (const item of sale.items.flatMap(stockLines)) move(item.product, -item.qty, 'Pengiriman marketplace', sale.id);
     history(sale, 'Dikirim');
     if (skipQc || skipHandover) Object.assign(sale.history.at(-1), { skipQc, skipHandover });
   } else if (action === 'return-start') {
