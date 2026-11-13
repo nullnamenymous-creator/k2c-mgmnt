@@ -164,11 +164,11 @@ function renderTechnician() {
   if (!marketplaces.includes(view)) view = 'Shopee';
   const pending = channel => state.sales.filter(sale => sale.channel === channel && technicianStages.some(([status]) => sale.status === status)).length;
   app.innerHTML = '<main class="tech-shell"><header class="tech-header">' + brand +
-    button('Ganti peran', 'logout', '', 'dark-button') + '</header><div class="tech-content">' +
+    button('Ganti peran', 'logout', '', 'dark-button') + '</header>' +
     '<nav class="tech-tabs" aria-label="Marketplace">' + marketplaces.map(channel =>
       '<button type="button"' + marketTheme(channel) + ' data-action="navigate" data-key="' + channel + '"' + (view === channel ? ' aria-current="page"' : '') +
       '><strong>' + channel + '</strong><span>' + pending(channel) + ' perlu ditangani</span></button>').join('') +
-    '</nav><div class="tech-title"><h1>Pesanan ' + view + '</h1>' + button('Muat ulang', 'reload') + '</div>' +
+    '</nav><div class="tech-content page-scroll"><div class="tech-title"><h1>Pesanan ' + view + '</h1>' + button('Muat ulang', 'reload') + '</div>' +
     search('Cari nomor pesanan atau resi') + '<div id="rows">' + technicianOrders() + '</div></div></main>';
 }
 
@@ -179,6 +179,7 @@ function render() {
   if (!nav.some(([key]) => key === view)) view = 'home';
   const online = state.sales.filter(s => s.channel !== 'Toko');
   let content;
+  let marketNav = '';
   let action = '';
   if (view === 'home') {
     const cards = can('teknisi', 'admin') ? ['Pesanan masuk', 'Siap kirim', 'Retur diterima', 'Bukti retur lengkap'] : ['Siap kirim', 'Retur diterima'];
@@ -193,11 +194,11 @@ function render() {
     content = '<section class="panel"><div class="toolbar' + (view === 'online' ? ' market-toolbar' : '') + '">' + search(placeholders[view]) + statusFilter + '</div><div id="rows">' + pageRows() + '</div></section>';
     if (view === 'online') {
       const channels = [...marketplaces, ...new Set(online.map(sale => sale.channel).filter(channel => !marketplaces.includes(channel)))];
-      content = '<nav class="market-tabs" aria-label="Pilih marketplace">' + channels.map(channel =>
+      marketNav = '<div class="market-nav"><nav class="market-tabs" aria-label="Pilih marketplace">' + channels.map(channel =>
         '<button type="button" class="market-tab"' + marketTheme(channel) + ' data-action="market-channel" data-key="' + esc(channel) + '"' +
         (channel === marketplace ? ' aria-current="page"' : '') + '><strong>' + esc(channel) + '</strong><span>' +
         online.filter(sale => sale.channel === channel).length + ' pesanan</span></button>'
-      ).join('') + '</nav>' + content;
+      ).join('') + '</nav></div>';
     }
     if (view === 'stock' && admin && state.movements.length) content += '<details class="panel stock-history"><summary>Riwayat stok</summary>' + table(['Barang', 'Jumlah', 'Alasan', 'Petugas', 'Waktu'], state.movements.slice(0, 20).map(m => [
       esc(label(byId(state.products, m.product))), (m.qty > 0 ? '+' : '') + m.qty, esc(m.reason), esc(m.actor), esc(date(m.at)),
@@ -207,7 +208,7 @@ function render() {
     nav.map(([key, title]) => '<button class="nav-button" data-action="navigate" data-key="' + key + '"' + (key === view ? ' aria-current="page"' : '') + '>' + title + '</button>').join('') +
     '</nav><div class="account"><strong>' + esc(state.user.name) + '</strong>' + button('Ganti peran', 'logout', '', 'dark-button') +
     '</div></aside><main><div class="topbar"><span>' + esc(new Intl.DateTimeFormat('id-ID', { dateStyle: 'full' }).format(new Date())) + '</span>' +
-    button('Muat ulang', 'reload') + '</div><div class="content"><header class="page-header"><h1>' + menus[view] + '</h1>' + action + '</header>' + content + '</div></main></div>';
+    button('Muat ulang', 'reload') + '</div>' + marketNav + '<div class="page-scroll"><div class="content"><header class="page-header"><h1>' + menus[view] + '</h1>' + action + '</header>' + content + '</div></div></main></div>';
 }
 
 function open(title, body) {

@@ -247,3 +247,18 @@ dialog::backdrop{background:#0f1d35a6}
 
 .recipe-line{display:grid;grid-template-columns:minmax(0,1fr) minmax(95px,130px) auto;gap:8px;align-items:end;padding:8px 0;border-bottom:1px solid var(--line)}
 @media(max-width:480px){.recipe-line{grid-template-columns:minmax(0,1fr) auto}.recipe-line label:first-child{grid-column:1/-1}}
+
+/* Keep navigation outside the active page's scroll container. */
+.shell,.tech-shell{height:100vh;height:100dvh;min-height:0;overflow:hidden}
+.shell>main,.tech-shell{display:flex;flex-direction:column;min-width:0;min-height:0}
+.shell .topbar,.tech-header,.tech-tabs,.market-nav{flex-shrink:0}
+.page-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
+.market-nav{width:100%;max-width:1500px;margin:0 auto;padding:12px 32px 0}
+.market-nav .market-tabs{margin-bottom:0}
+.tech-tabs{margin:0;padding:12px 12px 0}
+@media(max-width:760px){
+  .shell{display:flex;flex-direction:column}
+  .shell>.sidebar{flex-shrink:0}
+  .shell>main{flex:1}
+  .market-nav{padding:10px 12px 0}
+}
