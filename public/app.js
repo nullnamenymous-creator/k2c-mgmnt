@@ -13,6 +13,8 @@ const brand = '<div class="brand"><img src="/icon.svg" alt=""><div><strong>K2C M
 const statuses = ['Pesanan masuk', 'Siap kirim', 'Dikirim', 'Retur diterima', 'Bukti retur lengkap', 'Retur diperiksa', 'Dibatalkan'];
 const menus = { home: 'Ringkasan', online: 'Marketplace', shop: 'Penjualan Toko', stock: 'Stok Barang', buy: 'Pembelian' };
 const marketplaces = ['Shopee', 'Tokopedia'];
+const marketTheme = channel => marketplaces.includes(channel) ? ' data-market="' + channel.toLowerCase() + '"' : '';
+const marketBadge = channel => '<span class="market-badge"' + marketTheme(channel) + '>' + esc(channel) + '</span>';
 const technicianStages = [
   ['Pesanan masuk', 'Perlu tes', 'Cek barang & rekam'],
   ['Siap kirim', 'Siap kirim', 'Catat serah terima'],
@@ -91,7 +93,7 @@ function salesTable(rows, online, empty = 'Belum ada transaksi.') {
   if (can('admin')) columns.push('Total');
   columns.push('Aksi');
   return table(columns, rows.map(s => {
-    const first = online ? '<strong>' + esc(s.order) + '</strong><small>' + esc([s.channel, s.tracking].filter(Boolean).join(' · ')) + '</small>' : esc(date(s.at));
+    const first = online ? '<strong>' + esc(s.order) + '</strong><small>' + marketBadge(s.channel) + (s.tracking ? ' ' + esc(s.tracking) : '') + '</small>' : esc(date(s.at));
     const goods = esc(label(s.items[0])) + '<small>' + esc(s.items[0].qty) + ' unit' + (s.items.length > 1 ? ' · +' + (s.items.length - 1) + ' baris' : '') + '</small>';
     const row = [first + '<small>' + esc(s.buyer || 'Pembeli umum') + '</small>', goods];
     if (online) row.push(stage(s.status));
@@ -135,7 +137,7 @@ function pageRows() {
 function technicianOrders() {
   const rows = state.sales.filter(sale => sale.channel === view && matches(sale.order, sale.tracking, sale.buyer, ...sale.items.map(label)));
   function cards(sales, action) {
-    return '<div class="tech-cards">' + sales.map(sale => '<article class="tech-order">' +
+    return '<div class="tech-cards">' + sales.map(sale => '<article class="tech-order"' + marketTheme(sale.channel) + '>' +
       '<div class="tech-order-head"><strong>' + esc(sale.order) + '</strong><small>' + esc(sale.buyer) + '</small></div>' +
       '<ul>' + sale.items.map(item => '<li>' + esc(label(item)) + ' × ' + item.qty + '</li>').join('') + '</ul>' +
       (sale.tracking ? '<small class="muted">Resi ' + esc(sale.tracking) + '</small>' : '') +
@@ -156,7 +158,7 @@ function renderTechnician() {
   app.innerHTML = '<main class="tech-shell"><header class="tech-header">' + brand +
     button('Ganti peran', 'logout', '', 'dark-button') + '</header><div class="tech-content">' +
     '<nav class="tech-tabs" aria-label="Marketplace">' + marketplaces.map(channel =>
-      '<button type="button" data-action="navigate" data-key="' + channel + '"' + (view === channel ? ' aria-current="page"' : '') +
+      '<button type="button"' + marketTheme(channel) + ' data-action="navigate" data-key="' + channel + '"' + (view === channel ? ' aria-current="page"' : '') +
       '><strong>' + channel + '</strong><span>' + pending(channel) + ' perlu ditangani</span></button>').join('') +
     '</nav><div class="tech-title"><h1>Pesanan ' + view + '</h1>' + button('Muat ulang', 'reload') + '</div>' +
     search('Cari nomor pesanan atau resi') + '<div id="rows">' + technicianOrders() + '</div></div></main>';
@@ -184,7 +186,7 @@ function render() {
     if (view === 'online') {
       const channels = [...marketplaces, ...new Set(online.map(sale => sale.channel).filter(channel => !marketplaces.includes(channel)))];
       content = '<nav class="market-tabs" aria-label="Pilih marketplace">' + channels.map(channel =>
-        '<button type="button" class="market-tab" data-action="market-channel" data-key="' + esc(channel) + '"' +
+        '<button type="button" class="market-tab"' + marketTheme(channel) + ' data-action="market-channel" data-key="' + esc(channel) + '"' +
         (channel === marketplace ? ' aria-current="page"' : '') + '><strong>' + esc(channel) + '</strong><span>' +
         online.filter(sale => sale.channel === channel).length + ' pesanan</span></button>'
       ).join('') + '</nav>' + content;
@@ -388,7 +390,7 @@ function saleDetail(id) {
   const summary = admin ? '<p>Total jual <strong>' + fmt(total(s)) + '</strong> · Modal barang <strong>' + fmt(modalCost(s)) + '</strong></p>' : '';
   const settlement = admin && s.settlement ? '<p>Dana cair <strong>' + fmt(s.settlement.payout) + '</strong> · Potongan ' + fmt(s.settlement.fee) +
     (s.returnResult ? '' : ' · Selisih terhadap modal ' + fmt(s.settlement.payout - modalCost(s))) + '</p>' : '';
-  open(online ? s.channel + ' · ' + s.order : 'Detail transaksi toko', '<div class="details"><div class="row">' + stage(s.status) + '<span>' + esc(s.buyer || 'Umum') + '</span></div>' +
+  open(online ? s.channel + ' · ' + s.order : 'Detail transaksi toko', '<div class="details"><div class="row">' + (online ? marketBadge(s.channel) : '') + stage(s.status) + '<span>' + esc(s.buyer || 'Umum') + '</span></div>' +
     (actions.length ? '<div class="row detail-actions">' + actions.join('') + '</div>' : '') +
     (online ? '<p>Resi ' + esc(s.tracking || 'belum diisi') + '</p>' : '') + '<section><h3>Barang</h3><ul class="detail-list">' + items.join('') + '</ul>' +
     summary + settlement + '</section>' + (s.returnResult ? '<section><h3>Hasil retur</h3><p>' + esc(s.returnResult.note) +
