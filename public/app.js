@@ -31,11 +31,6 @@ let marketplace = marketplaces[0];
 const marketplaceFilters = new Map();
 let noticeTimer;
 let releaseCamera;
-const accessFromLink = new URLSearchParams(location.hash.slice(1)).get('access');
-if (accessFromLink) {
-  sessionStorage.setItem('k2c-access', accessFromLink);
-  history.replaceState(null, '', location.pathname + location.search);
-}
 const can = (...roles) => roles.includes(state.user.role);
 const button = (title, action, key = '', kind = '') => '<button type="button" class="button ' + kind + '" data-action="' + action + '" data-key="' + esc(key) + '">' + esc(title) + '</button>';
 const field = (name, title, value = '', type = 'text', extra = '') => '<label>' + esc(title) + '<input name="' + name + '" type="' + type + '" value="' + esc(value) + '" ' + extra + '></label>';
@@ -49,8 +44,6 @@ async function api(path, body, submission) {
   const isForm = body instanceof FormData;
   const headers = isForm ? {} : { 'Content-Type': 'application/json' };
   if (submission) headers['X-K2C-Submission'] = submission;
-  const cloudAccess = path === 'role' ? sessionStorage.getItem('k2c-access') : '';
-  if (cloudAccess) headers['X-K2C-Access'] = cloudAccess;
   const response = await fetch('/api/' + path, body === undefined ? {} : {
     method: 'POST',
     headers,

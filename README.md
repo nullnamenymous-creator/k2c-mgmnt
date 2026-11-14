@@ -40,6 +40,6 @@ Impor repo ke Vercel dengan preset **Other** dan Output Directory `public` (suda
 | `SUPABASE_SECRET_KEY` | Secret key server-side dari pengaturan API keys Supabase |
 | `K2C_CLOUD_ACCESS_KEY` | Nilai acak setidaknya 32 karakter. Gunakan karakter alfanumerik atau hex |
 
-Buka aplikasi melalui `https://alamat-vercel/#access=NILAI_K2C_CLOUD_ACCESS_KEY`. Kirim tautan ini hanya kepada tim yang boleh mengakses K2C. Setelah tautan dibuka, layar pertama tetap menampilkan **Admin** dan **Teknisi**. Kedua peran dapat dipilih oleh siapa pun yang menerima tautan. Rotasi kunci memutus sesi cloud yang sudah ada.
+Buka aplikasi dari URL Vercel. Siapa pun yang membuka aplikasi dapat memilih **Admin** atau **Teknisi** dan menggunakan fitur peran tersebut. `K2C_CLOUD_ACCESS_KEY` tetap disimpan di server untuk menandatangani sesi dan tiket unggah. Rotasi kunci memutus sesi cloud yang sudah ada.
 
 Bukti disimpan langsung dari browser ke bucket privat Supabase dengan batas 45 MB per file. Database cloud baru kosong. Data yang sebelumnya dicatat di SQLite tetap di perangkat lokal sampai ada migrasi data.

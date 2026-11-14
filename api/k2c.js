@@ -65,7 +65,6 @@ export default async function handler(req, res) {
     const previous = verify(/(?:^|;\s*)k2c_cloud=([^;]+)/.exec(req.headers.cookie || '')?.[1]);
     const session = previous?.purpose === 'session' ? previous : null;
     if (req.method === 'POST' && route === 'role') {
-      if (!session && !equal(req.headers['x-k2c-access'], access)) fail('Buka tautan akses K2C yang diberikan pengelola.', 401);
       if (!['admin','teknisi'].includes(body.role)) fail('Pilih Admin atau Teknisi.');
       const age = 12 * 3600;
       res.setHeader('Set-Cookie', cookie(sign({ purpose: 'session', id: randomUUID(), role: body.role, exp: Date.now() + age * 1000 }), age));
