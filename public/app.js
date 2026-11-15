@@ -94,6 +94,12 @@ function table(columns, rows, empty, className = '', numberFrom) {
     ).join('') + '</tr>').join('') + '</tbody></table></div>';
 }
 
+const marketplaceStages = new Map([
+  ['Pesanan masuk', { rank: 0, color: 'new-order' }],
+  ['Siap kirim', { rank: 1, color: 'ready-order' }],
+  ['Dikirim', { rank: 2, color: 'shipped-order' }],
+]);
+
 function salesTable(rows, online, empty = 'Belum ada transaksi.', numberFrom) {
   const columns = [online ? 'Pesanan' : 'Transaksi', 'Barang'];
   if (online) columns.push('Status');
@@ -103,7 +109,10 @@ function salesTable(rows, online, empty = 'Belum ada transaksi.', numberFrom) {
     const first = online ? '<strong>' + esc(s.order) + '</strong><small>' + marketBadge(s.channel) + (s.tracking ? ' ' + esc(s.tracking) : '') + '</small>' : esc(date(s.at));
     const goods = esc(label(s.items[0])) + '<small>' + esc(s.items[0].qty) + ' unit' + (s.items.length > 1 ? ' · +' + (s.items.length - 1) + ' baris' : '') + '</small>';
     const row = [first + '<small>' + esc(s.buyer || 'Pembeli umum') + '</small>', goods];
-    if (online) row.push(s.status === 'Pesanan masuk' ? '<span class="tag new-order">Pesanan masuk</span>' : stage(s.status));
+    if (online) {
+      const color = marketplaceStages.get(s.status)?.color;
+      row.push(color ? '<span class="tag ' + color + '">' + esc(s.status) + '</span>' : stage(s.status));
+    }
     if (can('admin')) row.push('<span class="sale-total">' + fmt(total(s)) + '</span>');
     row.push(button('Buka', 'sale-detail', s.id));
     return row;
@@ -191,7 +200,8 @@ function pageRows() {
     const sales = state.sales.filter(s => (online ? s.channel === marketplace : s.channel === 'Toko') && (!filter || s.status === filter) &&
       matches(s.order, s.tracking, s.channel, s.buyer, ...s.items.map(label)));
     if (!online) return salesTable(sales, false);
-    sales.sort((a, b) => Number(b.status === 'Pesanan masuk') - Number(a.status === 'Pesanan masuk'));
+    const rank = sale => marketplaceStages.get(sale.status)?.rank ?? 3;
+    sales.sort((a, b) => rank(a) - rank(b));
     const page = paginate(sales);
     return salesTable(page.items, true, undefined, page.start + 1) + listPagination(page);
   }

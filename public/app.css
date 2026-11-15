@@ -343,3 +343,10 @@ dialog::backdrop{background:#0f1d35a6}
 .excel-admin .sales-list tbody tr:has(.new-order){background:#fff1c2;box-shadow:inset 4px 0 #db7900}
 .excel-admin .sales-list tbody tr:has(.new-order):hover{background:#ffe8a0}
 .excel-admin .sales-list .new-order{background:#ffcb47;color:#542e00;font-weight:700}
+
+.excel-admin .sales-list tbody tr:has(.ready-order){background:#e6f0ff;box-shadow:inset 4px 0 #3478cd}
+.excel-admin .sales-list tbody tr:has(.ready-order):hover{background:#d8e8ff}
+.excel-admin .sales-list .ready-order{background:#bfd9ff;color:#153f7a;font-weight:700}
+.excel-admin .sales-list tbody tr:has(.shipped-order){background:#edf8ee;box-shadow:inset 4px 0 #38864b}
+.excel-admin .sales-list tbody tr:has(.shipped-order):hover{background:#e0f1e3}
+.excel-admin .sales-list .shipped-order{background:#c9e9cf;color:#174b2a;font-weight:700}
