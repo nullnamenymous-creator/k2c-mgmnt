@@ -270,3 +270,5 @@ dialog::backdrop{background:#0f1d35a6}
 .summary-table td:not(:first-child){font-variant-numeric:tabular-nums}
 .summary-table td:last-child .button{white-space:nowrap}
 @media(max-width:1050px){.summary-grid{grid-template-columns:minmax(0,1fr)}}
+
+.tech-order[data-market]:has(.tag.good){background:#f0faf4;border-color:#90c9a6;border-left-color:#218a4c}

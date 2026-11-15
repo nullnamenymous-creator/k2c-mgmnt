@@ -140,6 +140,7 @@ function technicianOrders() {
   function cards(sales, action) {
     return '<div class="tech-cards">' + sales.map(sale => '<article class="tech-order"' + marketTheme(sale.channel) + '>' +
       '<div class="tech-order-head"><strong>' + esc(sale.order) + '</strong><small>' + esc(sale.buyer) + '</small></div>' +
+      (sale.status === 'Dikirim' ? '<div>' + stage(sale.status) + '</div>' : '') +
       '<ul>' + sale.items.map(item => '<li>' + esc(label(item)) + ' × ' + item.qty + '</li>').join('') + '</ul>' +
       (sale.tracking ? '<small class="muted">Resi ' + esc(sale.tracking) + '</small>' : '') +
       button(action || (sale.status === 'Dikirim' ? 'Lihat pesanan / retur' : 'Lihat pesanan'), 'sale-detail', sale.id, action ? 'primary' : '') + '</article>').join('') + '</div>';
@@ -462,6 +463,7 @@ function saleDetail(id) {
   const actions = [];
   if (online && s.status === 'Pesanan masuk') actions.push(button('Unggah video QC', 'ready-upload', id, 'primary'), button('Rekam video QC', 'ready', id));
   if (online && s.status === 'Pesanan masuk') actions.push(button('Lewati QC & catat pengiriman', 'ship', id));
+  if (online && ['Pesanan masuk', 'Siap kirim'].includes(s.status)) actions.push(button('Barang sudah dikirim', 'ship-direct', id));
   if (s.status === 'Siap kirim') actions.push(button('Catat serah terima', 'ship', id, 'primary'));
   if (s.status === 'Dikirim') actions.push(button('Paket kembali', 'return-start', id));
   if (s.status === 'Retur diterima') actions.push(button('Unggah bukti retur', 'return-evidence', id, 'primary'));
@@ -655,6 +657,14 @@ async function click(action, key, element) {
   if (!s) return;
   if (action === 'ready-upload') return form('Unggah video QC', 'ready', proof('Video QC (MP4)', 'video/mp4,.mp4'), key, 'Simpan & tandai siap kirim');
   if (action === 'ready') return recordTest(key);
+  if (action === 'ship-direct') {
+    if (s.channel === 'Toko' || !['Pesanan masuk', 'Siap kirim'].includes(s.status)) return;
+    return form('Barang sudah dikirim', 'ship',
+      '<p>Konfirmasi paket sudah diserahkan ke kurir.</p>' +
+      (s.status === 'Pesanan masuk' ? '<input type="hidden" name="skipQc" value="yes">' : '') +
+      '<input type="hidden" name="skipHandover" value="yes">' +
+      field('tracking', 'Nomor resi', s.tracking, 'text', 'required'), key, 'Tandai dikirim');
+  }
   if (action === 'ship') {
     const skipQc = s.status === 'Pesanan masuk';
     return form(skipQc ? 'Lewati QC & catat pengiriman' : 'Serah terima paket', action,
