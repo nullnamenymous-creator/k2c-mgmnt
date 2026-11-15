@@ -31,6 +31,8 @@ let financePeriod = 'day';
 let financeChannel = '';
 let query = '';
 let filter = '';
+let listPage = 1;
+const listPageSize = 10;
 let marketplace = marketplaces[0];
 const marketplaceFilters = new Map();
 let noticeTimer;
@@ -160,17 +162,37 @@ function stockTools(placeholder) {
     pick('variant', 'Varian', choices('variant'), 'Semua varian') + ranges + '</div></details></div>';
 }
 
+function paginate(items) {
+  const pages = Math.max(1, Math.ceil(items.length / listPageSize));
+  listPage = Math.max(1, Math.min(listPage, pages));
+  const start = (listPage - 1) * listPageSize;
+  return { items: items.slice(start, start + listPageSize), total: items.length, start, pages };
+}
+
+function listPagination(page) {
+  if (!page.total) return '';
+  const control = (title, direction, disabled) => '<button type="button" class="button" data-action="list-page" data-key="' + direction + '"' + (disabled ? ' disabled' : '') + '>' + title + '</button>';
+  return '<nav class="list-pagination" aria-label="Halaman tabel"><span role="status">Menampilkan ' + (page.start + 1) +
+    '&ndash;' + (page.start + page.items.length) + ' dari ' + page.total + '</span>' + (page.pages > 1 ?
+      '<div class="list-pagination-controls">' + control('Sebelumnya', -1, listPage === 1) +
+        '<span>Halaman ' + listPage + ' dari ' + page.pages + '</span>' +
+        control('Berikutnya', 1, listPage === page.pages) + '</div>' : '') + '</nav>';
+}
+
 function pageRows() {
   if (can('teknisi')) return technicianOrders();
   if (view === 'online' || view === 'shop') {
     const online = view === 'online';
-    return salesTable(state.sales.filter(s => (online ? s.channel === marketplace : s.channel === 'Toko') && (!filter || s.status === filter) &&
-      matches(s.order, s.tracking, s.channel, s.buyer, ...s.items.map(label))), online);
+    const sales = state.sales.filter(s => (online ? s.channel === marketplace : s.channel === 'Toko') && (!filter || s.status === filter) &&
+      matches(s.order, s.tracking, s.channel, s.buyer, ...s.items.map(label)));
+    if (!online) return salesTable(sales, false);
+    const page = paginate(sales);
+    return salesTable(page.items, true) + listPagination(page);
   }
   if (view === 'stock' || view === 'low') {
     const columns = ['Nama barang', 'Varian', 'Tersedia', 'Dipesan', 'Harga toko', 'Harga marketplace', 'Status', 'Aksi'];
-    const products = filteredStock();
-    const rows = products.map(p => [
+    const page = paginate(filteredStock());
+    const rows = page.items.map(p => [
       '<strong>' + esc(p.name) + '</strong><small>' + esc(p.category) + '</small>',
       esc(p.variant || '—'),
       '<strong>' + (p.stock - p.reserved) + '</strong>' + (p.inspection ? '<small>' + p.inspection + ' retur dicek</small>' : ''),
@@ -180,8 +202,7 @@ function pageRows() {
       p.stock <= p.reserved ? '<span class="tag stock-empty">Habis</span>' : p.stock - p.reserved <= 3 ? '<span class="tag warn">Menipis</span>' : '<span class="tag good">Tersedia</span>',
       '<div class="row">' + button('Edit', 'product', p.id) + button('Komponen', 'recipe', p.id) + '</div>' + (p.recipe?.length ? '<small>Bisa dirakit: ' + Math.max(0, Math.min(...p.recipe.map(line => { const part = byId(state.products, line.product); return part ? Math.floor((part.stock - part.reserved) / line.qty) : 0; }))) + ' paket</small>' : ''),
     ]);
-    return '<p class="stock-result" role="status">' + rows.length + ' dari ' + activeProducts().length + ' varian</p>' +
-      table(columns, rows, 'Belum ada barang yang sesuai.', 'stock-sheet');
+    return table(columns, rows, 'Belum ada barang yang sesuai.', 'stock-sheet') + listPagination(page);
   }
   if (view === 'suppliers') return table(['Supplier', 'WhatsApp', 'Pembelian', 'Aksi'], (state.suppliers || []).filter(s => matches(s.name, s.phone)).map(s => [
     '<strong>' + esc(s.name) + '</strong>', '+' + esc(s.phone),
@@ -632,8 +653,18 @@ async function click(action, key, element) {
     return chooseRole();
   }
   if (action === 'reload') return refresh();
+  if (action === 'list-page') {
+    listPage += Number(key);
+    const rows = document.querySelector('#rows');
+    rows.innerHTML = pageRows();
+    rows.closest('.page-scroll').scrollTop = 0;
+    const controls = rows.querySelector('.list-pagination-controls');
+    (controls?.querySelector('[data-key="' + key + '"]:enabled') || controls?.querySelector('button:enabled'))?.focus({ preventScroll: true });
+    return;
+  }
   if (action === 'market-channel') {
     if (marketplace === key) return;
+    listPage = 1;
     marketplaceFilters.set(marketplace, { query, filter });
     marketplace = key;
     ({ query = '', filter = '' } = marketplaceFilters.get(key) || {});
@@ -641,11 +672,13 @@ async function click(action, key, element) {
   }
   if (action === 'stock-reset') {
     delete stockFilters[view];
+    listPage = 1;
     query = '';
     return render();
   }
   if (action === 'stock-find') {
     view = 'stock';
+    listPage = 1;
     delete stockFilters.stock;
     query = label(byId(state.products, key));
     return render();
@@ -653,6 +686,7 @@ async function click(action, key, element) {
   if (action === 'navigate' || action === 'queue') {
     if (view === 'online') marketplaceFilters.set(marketplace, { query, filter });
     view = action === 'queue' ? 'online' : key;
+    listPage = 1;
     ({ query = '', filter = '' } = view === 'online' ? marketplaceFilters.get(marketplace) || {} : {});
     if (action === 'queue') {
       const next = state.sales.find(sale => sale.channel !== 'Toko' && sale.status === key);
@@ -831,6 +865,7 @@ document.addEventListener('input', event => {
   if (target.name && target.closest('.stock-filters') && target.id !== 'search') {
     if (target.type === 'number' && !target.validity.valid) return;
     (stockFilters[view] ??= {})[target.name] = target.value;
+    listPage = 1;
     document.querySelector('#rows').innerHTML = pageRows();
     return;
   }
@@ -842,6 +877,7 @@ document.addEventListener('input', event => {
   }
   if (event.target.id !== 'search') return;
   query = event.target.value;
+  listPage = 1;
   document.querySelector('#rows').innerHTML = pageRows();
 });
 
@@ -871,6 +907,7 @@ document.addEventListener('change', event => {
   }
   if (target.name === 'status') {
     filter = target.value;
+    listPage = 1;
     document.querySelector('#rows').innerHTML = pageRows();
   }
   if (target.name === 'product') {
