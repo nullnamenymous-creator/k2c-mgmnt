@@ -514,18 +514,21 @@ function categoryValue(container, name) {
 
 const customProductName = '__new_product_name__';
 
-function productNameField(name, current) {
+function productNameChoices() {
   const names = new Map();
   for (const product of activeProducts()) {
     const key = product.name.trim().toLowerCase();
     if (!names.has(key)) names.set(key, product.name);
   }
-  if (current) names.set(current.trim().toLowerCase(), current);
-  const choices = [...names.values()].sort((a, b) => a.localeCompare(b, 'id'));
+  return [...names.values()].sort((a, b) => a.localeCompare(b, 'id'));
+}
+
+function productNameField(name) {
+  const choices = productNameChoices();
   const create = !choices.length;
   return '<div class="category-field">' + select(name, 'Nama barang', [
     ['', 'Pilih nama barang'], ...choices.map(value => [value, value]), [customProductName, '+ Buat nama barang baru'],
-  ], current || (create ? customProductName : '')) + '<label class="product-name-input"' + (create ? '' : ' hidden') +
+  ], create ? customProductName : '') + '<label class="product-name-input"' + (create ? '' : ' hidden') +
     '>Nama barang baru<input type="text" name="' + name + 'Custom" autocomplete="off" required' +
     (create ? '' : ' disabled') + '></label></div>';
 }
@@ -787,7 +790,10 @@ async function click(action, key, element) {
     const canSetInitial = !p || (!p.stock && !p.reserved && !state.movements.some(m => m.product === p.id));
     const initial = canSetInitial ? '<fieldset><legend>Stok awal (opsional)</legend><div class="grid">' +
       amount('initialStock', 'Jumlah yang sudah ada', '', 0, false) + amount('initialCost', 'Modal per unit', '', 0, false) + '</div></fieldset>' : '';
-    return form(p ? 'Edit barang' : 'Tambah barang', 'product', productNameField('name', p?.name) +
+    const nameField = p ? field('name', 'Nama barang', p.name, 'text', 'required autocomplete="off" list="product-name-options"') +
+      '<datalist id="product-name-options">' + productNameChoices().map(name => '<option value="' + esc(name) + '"></option>').join('') + '</datalist>' :
+      productNameField('name');
+    return form(p ? 'Edit barang' : 'Tambah barang', 'product', nameField +
       field('variant', 'Varian', p?.variant) +
       categoryField('category', p?.category) +
       '<div class="grid">' + amount('retail', 'Harga toko', p?.retail) + amount('market', 'Harga marketplace', p?.market) + '</div>' + initial + (p ? '<div>' + button('Hapus barang', 'product-delete', p.id) + '</div>' : ''), key);
@@ -959,7 +965,7 @@ document.addEventListener('submit', async event => {
       readyStock: row.querySelector('[name=readyStock]').checked,
     }));
     if (action === 'product') {
-      values.name = productNameValue(form, 'name');
+      if (!id) values.name = productNameValue(form, 'name');
       values.category = categoryValue(form, 'category');
     }
     if (action === 'purchase') values.items = Array.from(form.querySelectorAll('.purchase-item'), row => ({

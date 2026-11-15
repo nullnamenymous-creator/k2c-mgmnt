@@ -120,7 +120,7 @@ export function apply(state, action, input, user, files = []) {
     const p = input.id ? find(state.products, input.id) : archived || { id: id(), stock: 0, cost: 0 };
     const requestedName = required(input.name, 'Nama barang');
     if (input.id && p.archivedAt) fail('Barang sudah dihapus dari daftar aktif.');
-    const existingName = state.products.find(row => !row.archivedAt && productKey(row.name) === productKey(requestedName));
+    const existingName = !input.id && state.products.find(row => !row.archivedAt && productKey(row.name) === productKey(requestedName));
     const name = existingName?.name ?? requestedName;
     const variant = clean(input.variant);
     if (state.products.some(row => !row.archivedAt && row.id !== p.id && productKey(row.name) === productKey(name) && productKey(row.variant) === productKey(variant))) {
