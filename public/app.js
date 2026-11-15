@@ -524,6 +524,7 @@ function saleDetail(id) {
   if (online && s.status === 'Pesanan masuk') actions.push(button('Lewati QC & catat pengiriman', 'ship', id));
   if (online && ['Pesanan masuk', 'Siap kirim'].includes(s.status)) actions.push(button('Barang sudah dikirim', 'ship-direct', id));
   if (s.status === 'Siap kirim') actions.push(button('Catat serah terima', 'ship', id, 'primary'));
+  if (admin && s.status === 'Dikirim') actions.push(button('Kembali ke tahap sebelumnya', 'undo-ship', id));
   if (s.status === 'Dikirim') actions.push(button('Paket kembali', 'return-start', id));
   if (s.status === 'Retur diterima') actions.push(button('Unggah bukti retur', 'return-evidence', id, 'primary'));
   if (can('teknisi') && s.status === 'Bukti retur lengkap') actions.push(button('Catat hasil pemeriksaan', 'return-result', id, 'primary'));
@@ -744,6 +745,16 @@ async function click(action, key, element) {
       '<div class="handover-proof">' + proof('Foto bukti serah terima ke kurir atau gerai', 'image/*') + '</div>' +
       '<label class="check"><input type="checkbox" name="skipHandover" value="yes">Lewati foto serah terima</label>',
       key, 'Simpan & tandai dikirim');
+  }
+  if (action === 'undo-ship') {
+    if (!can('admin') || s.status !== 'Dikirim') return;
+    const previous = s.history.at(-2)?.status;
+    if (!['Pesanan masuk', 'Siap kirim'].includes(previous)) return open('Koreksi pengiriman', '<p>Tahap sebelum dikirim tidak tercatat.</p>');
+    return form('Koreksi pengiriman', action,
+      '<input type="hidden" name="shippedAt" value="' + esc(s.history.at(-1).at) + '">' +
+      '<p>Konfirmasi paket belum dikirim. Status akan kembali ke <strong>' + esc(previous) +
+      '</strong>. Stok yang tercatat keluar akan dikembalikan dan ditahan untuk pesanan ini.</p>',
+      key, 'Kembalikan ke ' + previous);
   }
   if (action === 'return-start') return form('Terima paket kembali', action, '<p>Konfirmasi paket sudah diterima. Ambil dua foto paket sebelum dibuka dan rekam video unboxing.</p>', key, 'Tandai retur diterima');
   if (action === 'return-evidence') return form('Bukti paket kembali', action, proof('Foto paket 1', 'image/*') + proof('Foto paket 2', 'image/*') + proof('Video unboxing (MP4)', 'video/mp4,.mp4'), key);

@@ -281,6 +281,20 @@ export function apply(state, action, input, user, files = []) {
     for (const item of sale.items.flatMap(stockLines)) move(item.product, -item.qty, 'Pengiriman marketplace', sale.id);
     history(sale, 'Dikirim');
     if (skipQc || skipHandover) Object.assign(sale.history.at(-1), { skipQc, skipHandover });
+  } else if (action === 'undo-ship') {
+    allow('admin');
+    step(['Dikirim']);
+    const shipment = sale.history.at(-1);
+    const previous = sale.history.at(-2)?.status;
+    if (shipment?.status !== 'Dikirim' || shipment.at !== input.shippedAt || !active.includes(previous)) {
+      fail('Riwayat pengiriman berubah atau tahap sebelumnya tidak ditemukan. Muat ulang pesanan.', 409);
+    }
+    if (sale.settlement) fail('Dana cair sudah tercatat. Status pengiriman belum bisa dikoreksi.');
+    for (const item of sale.items.flatMap(stockLines)) {
+      move(item.product, item.qty, 'Koreksi pengiriman marketplace', sale.id);
+    }
+    history(sale, previous);
+    sale.history.at(-1).note = 'Status Dikirim dikoreksi karena paket belum dikirim';
   } else if (action === 'return-start') {
     allow('admin', 'teknisi');
     step(['Dikirim']);
