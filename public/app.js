@@ -1,4 +1,5 @@
 import { purchasePdf } from './purchase-pdf.js';
+import { financialReport, reportDay, reportRange } from './financial-report.js';
 
 const app = document.querySelector('#app');
 const dialog = document.querySelector('#dialog');
@@ -13,7 +14,7 @@ const total = sale => sale.items.reduce((sum, item) => sum + item.price * item.q
 const modalCost = sale => sale.items.reduce((sum, item) => sum + (item.parts ? item.parts.reduce((cost, part) => cost + part.cost * part.qty, 0) : item.cost * item.qty), 0);
 const brand = '<div class="brand"><img src="/icon.svg" alt=""><div><strong>K2C Management</strong><small>K2C Komputindo</small></div></div>';
 const statuses = ['Pesanan masuk', 'Siap kirim', 'Dikirim', 'Retur diterima', 'Bukti retur lengkap', 'Retur diperiksa', 'Dibatalkan'];
-const menus = { home: 'Ringkasan', online: 'Marketplace', shop: 'Penjualan Toko', stock: 'Stok Barang', buy: 'Pembelian', low: 'Stok Menipis', suppliers: 'Supplier' };
+const menus = { home: 'Ringkasan', online: 'Marketplace', shop: 'Penjualan Toko', stock: 'Stok Barang', buy: 'Pembelian', finance: 'Laba Rugi', low: 'Stok Menipis', suppliers: 'Supplier' };
 const marketplaces = ['Shopee', 'Tokopedia'];
 const marketTheme = channel => marketplaces.includes(channel) ? ' data-market="' + channel.toLowerCase() + '"' : '';
 const marketBadge = channel => '<span class="market-badge"' + marketTheme(channel) + '>' + esc(channel) + '</span>';
@@ -25,6 +26,9 @@ const technicianStages = [
 ];
 let state;
 let view = 'home';
+let financeDate = reportDay();
+let financePeriod = 'day';
+let financeChannel = '';
 let query = '';
 let filter = '';
 let marketplace = marketplaces[0];
@@ -250,6 +254,40 @@ function dashboard(online) {
   return '<div class="summary-grid">' + inventory + sales + '</div>' + queue + stock;
 }
 
+function financeView() {
+  const [from, through] = reportRange(financeDate, financePeriod);
+  const report = financialReport(state, from, through, financeChannel);
+  const grossProfit = report.net - report.cogs;
+  const periodLabel = day => new Date(day + 'T00:00:00Z').toLocaleDateString('id-ID', {
+    day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+  });
+  const channels = ['Toko', ...marketplaces, ...new Set(state.sales.map(sale => sale.channel)
+    .filter(channel => channel !== 'Toko' && !marketplaces.includes(channel)))];
+  const controls = '<div class="finance-filters">' +
+    select('financePeriod', 'Periode', [['day', 'Harian'], ['week', 'Mingguan'], ['month', 'Bulanan']], financePeriod) +
+    field('financeDate', 'Tanggal acuan', financeDate, 'date', 'required') +
+    select('financeChannel', 'Kanal', [['', 'Semua kanal'], ...channels.map(channel => [channel, channel])], financeChannel) + '</div>';
+  const summary = [['Penjualan toko + dana cair marketplace', report.net], ['HPP setelah koreksi stok retur', report.cogs],
+    ['Laba kotor', grossProfit]];
+  if (!financeChannel) summary.push(['Biaya operasional tercatat', report.operating], ['Laba / rugi bersih tercatat', grossProfit - report.operating]);
+  return '<section class="panel">' + controls + '<div class="finance-note"><strong>' + esc(periodLabel(from)) +
+    (from === through ? '' : ' ? ' + esc(periodLabel(through))) +
+    '</strong> ? WIB<p>Penjualan toko mengikuti tanggal transaksi. Marketplace mengikuti tanggal pencatatan dana cair. Potongan sudah termasuk dalam dana cair bersih.</p>' +
+    (report.incomplete ? '<p class="tag warn">' + report.incomplete + ' pesanan punya modal kosong atau nol. Laba masih perkiraan.</p>' : '') +
+    '</div>' + table(['Laba / Rugi', 'Nominal'], summary.map(([name, value]) => [esc(name), '<strong>' + fmt(value) + '</strong>']), '', 'summary-table') +
+    '<div class="finance-note"><p>Potongan marketplace: ' + fmt(report.fee) + ' ? Pesanan periode ini tanpa dana cair: ' + report.pending + '</p>' +
+    (financeChannel ? '<p>Biaya umum tersedia di Semua kanal.</p>' : '<p>Pembelian stok: ' + fmt(report.purchases) + ' (dicatat sebagai persediaan; HPP dihitung saat penjualan).</p>') +
+    '</div></section>' +
+    panel('Rincian penjualan dan retur', table(['Tanggal', 'Kanal', 'Transaksi', 'Dana bersih', 'HPP', 'Laba kotor', 'Aksi'],
+      report.rows.map(row => [esc(periodLabel(row.day)), row.sale.channel === 'Toko' ? 'Toko' : marketBadge(row.sale.channel),
+        esc(row.sale.order || row.sale.buyer || 'Penjualan toko') + '<small>' + esc(row.kind) + '</small>',
+        fmt(row.net), fmt(row.cogs), fmt(row.net - row.cogs), button('Buka', 'sale-detail', row.sale.id)]),
+      'Belum ada penjualan atau koreksi retur yang diakui di periode ini.', 'summary-table')) +
+    (financeChannel ? '' : panel('Biaya operasional', table(['Tanggal', 'Keterangan', 'Nominal', 'Aksi'],
+      report.expenses.map(expense => [esc(periodLabel(expense.day)), esc(expense.name), fmt(expense.amount),
+        button('Edit', 'expense', expense.id)]), 'Belum ada biaya operasional tercatat.', 'summary-table')));
+}
+
 function render() {
   if (can('teknisi')) return renderTechnician();
   const admin = can('admin');
@@ -262,6 +300,9 @@ function render() {
   if (view === 'home') {
     action = button('Input pesanan', 'sale-new', 'online', 'primary');
     content = dashboard(online);
+  } else if (view === 'finance') {
+    action = button('Catat biaya', 'expense', '', 'primary');
+    content = financeView();
   } else {
     const titles = { online: ['Input pesanan', 'sale-new'], shop: ['Transaksi baru', 'sale-new'], stock: ['Tambah barang', 'product'], buy: ['Catat pembelian', 'purchase'], suppliers: ['Tambah supplier', 'supplier'] };
     if (admin && titles[view] && (view !== 'online' || marketplaces.includes(marketplace))) action = view === 'online' ? button('Input pesanan ' + marketplace, 'sale-new', marketplace, 'primary') : button(...titles[view], '', 'primary');
@@ -299,7 +340,7 @@ function open(title, body) {
 
 function form(title, action, body, id = '', submit = 'Simpan') {
   open(title, '<form data-submit="' + action + '" data-id="' + esc(id) + '">' + body +
-    '<p class="error" role="alert"></p><div class="actions">' + (id && !['product', 'supplier', 'recipe', 'build-stock'].includes(action) ? button('Kembali', action === 'product-delete' ? 'product' : ['receive', 'purchase-delete'].includes(action) ? 'purchase-detail' : 'sale-detail', id) : '') +
+    '<p class="error" role="alert"></p><div class="actions">' + (id && !['product', 'supplier', 'recipe', 'build-stock', 'expense'].includes(action) ? button('Kembali', action === 'product-delete' ? 'product' : ['receive', 'purchase-delete'].includes(action) ? 'purchase-detail' : 'sale-detail', id) : '') +
     '<button class="button primary">' + esc(submit) + '</button></div></form>');
 }
 
@@ -585,6 +626,9 @@ async function click(action, key, element) {
     marketplaceFilters.clear();
     delete stockFilters.stock;
     delete stockFilters.low;
+    financeDate = reportDay();
+    financePeriod = 'day';
+    financeChannel = '';
     return chooseRole();
   }
   if (action === 'reload') return refresh();
@@ -688,6 +732,13 @@ async function click(action, key, element) {
   }
   if (action === 'recipe-add') return dialog.querySelector('#recipe-lines').insertAdjacentHTML('beforeend', recipeLine(key));
   if (action === 'recipe-remove') return element.closest('.recipe-line').remove();
+  if (action === 'expense') {
+    const expense = byId(state.expenses || [], key);
+    return form(expense ? 'Edit biaya operasional' : 'Catat biaya operasional', action,
+      field('day', 'Tanggal', expense?.day || financeDate, 'date', 'required') +
+      field('name', 'Keterangan biaya', expense?.name, 'text', 'required maxlength="120"') +
+      amount('amount', 'Nominal biaya', expense?.amount, 1), key);
+  }
   if (action === 'product-delete') {
     const p = byId(state.products, key);
     return form('Hapus barang', action, '<p>Hapus <strong>' + esc(label(p)) + '</strong> dari daftar barang aktif? Riwayat transaksi tetap tersimpan.</p>', key, 'Hapus barang');
@@ -796,6 +847,11 @@ document.addEventListener('input', event => {
 
 document.addEventListener('change', event => {
   const target = event.target;
+  if (target.name === 'financeDate' && target.validity.valid && target.value) financeDate = target.value;
+  else if (target.name === 'financePeriod') financePeriod = target.value;
+  else if (target.name === 'financeChannel') financeChannel = target.value;
+  else if (target.name === 'financeDate') return;
+  if (['financeDate', 'financePeriod', 'financeChannel'].includes(target.name)) return render();
   if (target.name === 'proof' && target.form) delete target.form.cloudTicket;
   if (target.name === 'skipHandover') {
     const proof = target.form.querySelector('.handover-proof');
@@ -913,7 +969,7 @@ document.addEventListener('submit', async event => {
     if (action === 'supplier' && values.continuePurchase === 'yes') await click('purchase', '');
     else if (action === 'purchase') purchaseDetail(body.purchaseId);
     else if (action === 'receive') purchaseDetail(id);
-    else if (id && !['product', 'product-delete', 'supplier', 'purchase-delete', 'recipe', 'build-stock'].includes(action)) saleDetail(id);
+    else if (id && !['product', 'product-delete', 'supplier', 'purchase-delete', 'recipe', 'build-stock', 'expense'].includes(action)) saleDetail(id);
   } catch (error) {
     if (error.status === 401) chooseRole(error.message);
     else if (dialog.open) {

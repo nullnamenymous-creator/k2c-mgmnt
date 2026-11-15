@@ -63,6 +63,20 @@ export function apply(state, action, input, user, files = []) {
       initialCost: draft.initialCost,
     }, user);
   }
+  if (action === 'expense') {
+    allow('admin');
+    const day = required(input.day, 'Tanggal');
+    const parsed = new Date(day + 'T00:00:00Z');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== day) fail('Tanggal tidak valid.');
+    const name = required(input.name, 'Keterangan biaya');
+    if (name.length > 120) fail('Keterangan biaya maksimal 120 karakter.');
+    const amount = number(input.amount, 'Nominal biaya', 1);
+    const expenses = state.expenses ??= [];
+    const expense = input.id ? find(expenses, input.id) : { id: id() };
+    Object.assign(expense, { day, name, amount, at, actor });
+    if (!input.id) expenses.unshift(expense);
+    return expense;
+  }
   if (action === 'build-stock') {
     allow('admin');
     const product = find(state.products, input.id);
@@ -71,6 +85,8 @@ export function apply(state, action, input, user, files = []) {
     const lines = product.recipe.map(line => ({ part: find(state.products, line.product), qty: number(line.qty * qty, 'Jumlah komponen', 1) }));
     for (const line of lines) if (free(state, line.part) < line.qty) fail('Stok tersedia tidak cukup untuk ' + line.part.name + '.');
     for (const line of lines) move(line.part.id, -line.qty, 'Perakitan paket', product.id);
+    const batchCost = lines.reduce((sum, line) => sum + line.part.cost * line.qty, 0);
+    product.cost = Math.round((product.stock * product.cost + batchCost) / (product.stock + qty));
     move(product.id, qty, 'Paket siap jual', product.id);
     return product;
   }
