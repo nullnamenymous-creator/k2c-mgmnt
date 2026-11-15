@@ -37,7 +37,8 @@ const field = (name, title, value = '', type = 'text', extra = '') => '<label>' 
 const amount = (name, title, value = '', min = 0, required = true) => field(name, title, value, 'number', 'min="' + min + '" step="1"' + (required ? ' required' : ''));
 const select = (name, title, options, current = '') => '<label>' + esc(title) + '<select name="' + name + '" required>' + options.map(([value, text]) => '<option value="' + esc(value) + '"' + (current === value ? ' selected' : '') + '>' + esc(text) + '</option>').join('') + '</select></label>';
 const proof = (title, accept) => '<label>' + esc(title) + '<input type="file" name="proof" accept="' + accept + '" required></label>';
-const options = () => [['', 'Pilih barang'], ...state.products.map(p => [p.id, label(p)])];
+const activeProducts = () => state.products.filter(p => !p.archivedAt);
+const options = () => [['', 'Pilih barang'], ...activeProducts().map(p => [p.id, label(p)])];
 const stage = s => '<span class="tag ' + (['Dikirim', 'Selesai', 'Retur diperiksa'].includes(s) ? 'good' : s.startsWith('Retur') || s.includes('retur') ? 'warn' : s === 'Dibatalkan' ? 'neutral' : '') + '">' + esc(s) + '</span>';
 
 async function api(path, body, submission) {
@@ -102,6 +103,59 @@ const panel = (title, content) => '<section class="panel"><div class="panel-head
 const search = placeholder => '<input type="search" id="search" aria-label="' + esc(placeholder) + '" placeholder="' + esc(placeholder) + '" value="' + esc(query) + '">';
 const matches = (...terms) => terms.some(term => String(term ?? '').toLowerCase().includes(query.toLowerCase().trim()));
 
+const stockRanges = [
+  ['stock', 'Jumlah tersedia', p => p.stock - p.reserved],
+  ['reserved', 'Jumlah dipesan', p => p.reserved],
+  ['retail', 'Harga toko', p => p.retail],
+  ['market', 'Harga marketplace', p => p.market],
+];
+const stockFilters = {};
+const stockStatus = p => p.stock <= p.reserved ? 'Habis' : p.stock - p.reserved <= 3 ? 'Menipis' : 'Tersedia';
+const stockSorts = {
+  name: (a, b) => label(a).localeCompare(label(b), 'id', { numeric: true }),
+  stock: (a, b) => (a.stock - a.reserved) - (b.stock - b.reserved),
+  reserved: (a, b) => a.reserved - b.reserved,
+  retail: (a, b) => a.retail - b.retail,
+  market: (a, b) => a.market - b.market,
+};
+function filteredStock() {
+  const f = stockFilters[view] || {};
+  const rows = activeProducts().filter(p => {
+    const haystack = [label(p), p.category, stockStatus(p)].join(' ').toLowerCase();
+    const terms = query.toLowerCase().trim().split(/\s+/);
+    return terms.every(term => haystack.includes(term)) &&
+      (view !== 'low' || stockStatus(p) !== 'Tersedia') &&
+      (!f.name || f.name === p.name) && (!f.variant || f.variant === p.variant) &&
+      (!f.category || f.category === p.category) && (!f.stockStatus || f.stockStatus === stockStatus(p)) &&
+      stockRanges.every(([key, , value]) => (!f[key + 'Min'] || value(p) >= Number(f[key + 'Min'])) &&
+        (!f[key + 'Max'] || value(p) <= Number(f[key + 'Max'])));
+  });
+  const [sort, direction] = (f.sort || (view === 'low' ? 'stock:asc' : 'name:asc')).split(':');
+  return rows.sort((a, b) => (direction === 'desc' ? -1 : 1) * (stockSorts[sort] || stockSorts.name)(a, b) || stockSorts.name(a, b));
+}
+
+function stockTools(placeholder) {
+  const f = stockFilters[view] || {};
+  const choices = key => [...new Set(activeProducts().map(p => p[key]).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'id', { numeric: true })).map(value => [value, value]);
+  const pick = (key, title, items, all) => select(key, title, [['', all], ...items], f[key] || '');
+  const statuses = view === 'low' ? ['Menipis', 'Habis'] : ['Tersedia', 'Menipis', 'Habis'];
+  const sorts = [['name:asc', 'Nama A?Z'], ['name:desc', 'Nama Z?A'],
+    ...stockRanges.flatMap(([key, title]) => [[key + ':asc', title + ' terendah'], [key + ':desc', title + ' tertinggi']])];
+  const ranges = stockRanges.map(([key, title]) => '<fieldset><legend>' + esc(title) + '</legend><div class="grid">' +
+    amount(key + 'Min', 'Min', f[key + 'Min'] || '', 0, false) + amount(key + 'Max', 'Maks', f[key + 'Max'] || '', 0, false) + '</div></fieldset>').join('');
+  return '<div class="stock-filters"><div class="stock-filter-main">' +
+    '<label>Pencarian' + search(placeholder) + '</label>' +
+    pick('category', 'Kategori', choices('category'), 'Semua kategori') +
+    pick('stockStatus', 'Status stok', statuses.map(value => [value, value]), 'Semua status') +
+    select('sort', 'Urutkan', sorts, f.sort || (view === 'low' ? 'stock:asc' : 'name:asc')) +
+    button('Reset filter', 'stock-reset') + '</div>' +
+    '<details class="stock-filter-extra"' + (Object.keys(f).some(key => /Min$|Max$|^name$|^variant$/.test(key) && f[key]) ? ' open' : '') +
+    '><summary>Filter lanjutan</summary><div class="stock-filter-grid">' +
+    pick('name', 'Nama barang', choices('name'), 'Semua nama') +
+    pick('variant', 'Varian', choices('variant'), 'Semua varian') + ranges + '</div></details></div>';
+}
+
 function pageRows() {
   if (can('teknisi')) return technicianOrders();
   if (view === 'online' || view === 'shop') {
@@ -111,8 +165,7 @@ function pageRows() {
   }
   if (view === 'stock' || view === 'low') {
     const columns = ['Nama barang', 'Varian', 'Tersedia', 'Dipesan', 'Harga toko', 'Harga marketplace', 'Status', 'Aksi'];
-    const products = state.products.filter(p => matches(label(p), p.category) && (view !== 'low' || p.stock - p.reserved <= 3));
-    if (view === 'low') products.sort((a, b) => (a.stock - a.reserved) - (b.stock - b.reserved));
+    const products = filteredStock();
     const rows = products.map(p => [
       '<strong>' + esc(p.name) + '</strong><small>' + esc(p.category) + '</small>',
       esc(p.variant || '—'),
@@ -123,7 +176,8 @@ function pageRows() {
       p.stock <= p.reserved ? '<span class="tag stock-empty">Habis</span>' : p.stock - p.reserved <= 3 ? '<span class="tag warn">Menipis</span>' : '<span class="tag good">Tersedia</span>',
       '<div class="row">' + button('Edit', 'product', p.id) + button('Komponen', 'recipe', p.id) + '</div>' + (p.recipe?.length ? '<small>Bisa dirakit: ' + Math.max(0, Math.min(...p.recipe.map(line => { const part = byId(state.products, line.product); return part ? Math.floor((part.stock - part.reserved) / line.qty) : 0; }))) + ' paket</small>' : ''),
     ]);
-    return table(columns, rows, 'Belum ada barang yang sesuai.', 'stock-sheet');
+    return '<p class="stock-result" role="status">' + rows.length + ' dari ' + activeProducts().length + ' varian</p>' +
+      table(columns, rows, 'Belum ada barang yang sesuai.', 'stock-sheet');
   }
   if (view === 'suppliers') return table(['Supplier', 'WhatsApp', 'Pembelian', 'Aksi'], (state.suppliers || []).filter(s => matches(s.name, s.phone)).map(s => [
     '<strong>' + esc(s.name) + '</strong>', '+' + esc(s.phone),
@@ -171,14 +225,14 @@ function renderTechnician() {
 
 function dashboard(online) {
   const available = product => Math.max(0, product.stock - product.reserved);
-  const low = state.products.filter(product => available(product) <= 3)
+  const low = activeProducts().filter(product => available(product) <= 3)
     .sort((a, b) => available(a) - available(b) || label(a).localeCompare(label(b), 'id'));
-  const units = state.products.reduce((sum, product) => sum + available(product), 0);
+  const units = activeProducts().reduce((sum, product) => sum + available(product), 0);
   const channels = ['Toko', ...marketplaces, ...new Set(online.map(sale => sale.channel).filter(channel => !marketplaces.includes(channel)))];
   const inventory = panel('Stok barang', table(['Indikator', 'Jumlah'], [
-    ['Varian tercatat', state.products.length],
+    ['Varian tercatat', activeProducts().length],
     ['Unit tersedia', units],
-    ['Unit dipesan', state.products.reduce((sum, product) => sum + product.reserved, 0)],
+    ['Unit dipesan', activeProducts().reduce((sum, product) => sum + product.reserved, 0)],
     ['Varian stok menipis (1–3 unit)', low.filter(product => available(product) > 0).length],
     ['Varian stok habis', low.filter(product => !available(product)).length],
   ], '', 'summary-table'));
@@ -214,6 +268,7 @@ function render() {
     const placeholders = { online: 'Cari resi, nomor pesanan, atau pembeli', shop: 'Cari pembeli atau barang', stock: 'Cari barang atau varian', low: 'Cari stok menipis atau habis', buy: 'Cari supplier atau barang', suppliers: 'Cari nama atau nomor WhatsApp' };
     const statusFilter = view === 'online' ? '<div>' + select('status', 'Status', [['', 'Semua status'], ...statuses.map(s => [s, s])], filter) + '</div>' : '';
     content = '<section class="panel"><div class="toolbar' + (view === 'online' ? ' market-toolbar' : '') + '">' + search(placeholders[view]) + statusFilter + '</div><div id="rows">' + pageRows() + '</div></section>';
+    if (['stock', 'low'].includes(view)) content = '<section class="panel">' + stockTools(placeholders[view]) + '<div id="rows">' + pageRows() + '</div></section>';
     if (view === 'online') {
       const channels = [...marketplaces, ...new Set(online.map(sale => sale.channel).filter(channel => !marketplaces.includes(channel)))];
       marketNav = '<div class="market-nav"><nav class="market-tabs" aria-label="Pilih marketplace">' + channels.map(channel =>
@@ -244,7 +299,7 @@ function open(title, body) {
 
 function form(title, action, body, id = '', submit = 'Simpan') {
   open(title, '<form data-submit="' + action + '" data-id="' + esc(id) + '">' + body +
-    '<p class="error" role="alert"></p><div class="actions">' + (id && !['product', 'supplier', 'recipe', 'build-stock'].includes(action) ? button('Kembali', ['receive', 'purchase-delete'].includes(action) ? 'purchase-detail' : 'sale-detail', id) : '') +
+    '<p class="error" role="alert"></p><div class="actions">' + (id && !['product', 'supplier', 'recipe', 'build-stock'].includes(action) ? button('Kembali', action === 'product-delete' ? 'product' : ['receive', 'purchase-delete'].includes(action) ? 'purchase-detail' : 'sale-detail', id) : '') +
     '<button class="button primary">' + esc(submit) + '</button></div></form>');
 }
 
@@ -393,17 +448,17 @@ function categoryValue(container, name) {
 const customProductName = '__new_product_name__';
 
 function productNameField(name, current) {
-  if (current) return field(name, 'Nama barang', current, 'text', 'readonly');
   const names = new Map();
-  for (const product of state.products) {
+  for (const product of activeProducts()) {
     const key = product.name.trim().toLowerCase();
     if (!names.has(key)) names.set(key, product.name);
   }
+  if (current) names.set(current.trim().toLowerCase(), current);
   const choices = [...names.values()].sort((a, b) => a.localeCompare(b, 'id'));
   const create = !choices.length;
   return '<div class="category-field">' + select(name, 'Nama barang', [
     ['', 'Pilih nama barang'], ...choices.map(value => [value, value]), [customProductName, '+ Buat nama barang baru'],
-  ], create ? customProductName : '') + '<label class="product-name-input"' + (create ? '' : ' hidden') +
+  ], current || (create ? customProductName : '')) + '<label class="product-name-input"' + (create ? '' : ' hidden') +
     '>Nama barang baru<input type="text" name="' + name + 'Custom" autocomplete="off" required' +
     (create ? '' : ' disabled') + '></label></div>';
 }
@@ -414,7 +469,7 @@ function productNameValue(container, name) {
 }
 
 function transactionProductSelect() {
-  return select('product', 'Barang / Varian', [...options(), ['new', '+ Buat produk baru']], state.products.length ? '' : 'new');
+  return select('product', 'Barang / Varian', [...options(), ['new', '+ Buat produk baru']], activeProducts().length ? '' : 'new');
 }
 
 function transactionProduct(sale = false) {
@@ -422,7 +477,7 @@ function transactionProduct(sale = false) {
 }
 
 function newProductFields(sale) {
-  return '<fieldset class="new-product"' + (state.products.length ? ' hidden disabled' : '') + '><legend>Produk baru</legend>' +
+  return '<fieldset class="new-product"' + (activeProducts().length ? ' hidden disabled' : '') + '><legend>Produk baru</legend>' +
     '<div class="grid">' + productNameField('newName') + field('newVariant', 'Varian') +
     categoryField('newCategory') +
     (sale ? amount('newStock', 'Stok fisik sebelum dijual', '', 1) + amount('newCost', 'Modal per unit (opsional)', '', 0, false) :
@@ -442,12 +497,12 @@ function purchaseLine() {
   return '<tbody class="purchase-item"><tr class="purchase-entry"><td>' + transactionProductSelect() + '</td><td>' +
     amount('qty', 'Jumlah', 1, 1) + '</td><td>' + amount('cost', 'Harga beli per unit') +
     '</td><td class="purchase-subtotal">—</td><td>' + button('Hapus', 'line-remove') +
-    '</td></tr><tr class="purchase-new"' + (state.products.length ? ' hidden' : '') +
+    '</td></tr><tr class="purchase-new"' + (activeProducts().length ? ' hidden' : '') +
     '><td colspan="5">' + newProductFields(false) + '</td></tr></tbody>';
 }
 
 function recipeLine(id, line = {}) {
-  const options = [['', 'Pilih komponen'], ...state.products.filter(p => p.id !== id && !p.recipe?.length).map(p => [p.id, label(p)])];
+  const options = [['', 'Pilih komponen'], ...activeProducts().filter(p => p.id !== id && !p.recipe?.length).map(p => [p.id, label(p)])];
   return '<div class="recipe-line">' + select('component', 'Barang / Varian', options, line.product) +
     amount('componentQty', 'Jumlah per paket', line.qty ?? 1, 1) + button('Hapus', 'recipe-remove') + '</div>';
 }
@@ -527,6 +582,8 @@ async function click(action, key, element) {
     query = filter = '';
     marketplace = marketplaces[0];
     marketplaceFilters.clear();
+    delete stockFilters.stock;
+    delete stockFilters.low;
     return chooseRole();
   }
   if (action === 'reload') return refresh();
@@ -537,8 +594,14 @@ async function click(action, key, element) {
     ({ query = '', filter = '' } = marketplaceFilters.get(key) || {});
     return render();
   }
+  if (action === 'stock-reset') {
+    delete stockFilters[view];
+    query = '';
+    return render();
+  }
   if (action === 'stock-find') {
     view = 'stock';
+    delete stockFilters.stock;
     query = label(byId(state.products, key));
     return render();
   }
@@ -624,6 +687,10 @@ async function click(action, key, element) {
   }
   if (action === 'recipe-add') return dialog.querySelector('#recipe-lines').insertAdjacentHTML('beforeend', recipeLine(key));
   if (action === 'recipe-remove') return element.closest('.recipe-line').remove();
+  if (action === 'product-delete') {
+    const p = byId(state.products, key);
+    return form('Hapus barang', action, '<p>Hapus <strong>' + esc(label(p)) + '</strong> dari daftar barang aktif? Riwayat transaksi tetap tersimpan.</p>', key, 'Hapus barang');
+  }
   if (action === 'product') {
     const p = byId(state.products, key);
     const canSetInitial = !p || (!p.stock && !p.reserved && !state.movements.some(m => m.product === p.id));
@@ -632,7 +699,7 @@ async function click(action, key, element) {
     return form(p ? 'Edit barang' : 'Tambah barang', 'product', productNameField('name', p?.name) +
       field('variant', 'Varian', p?.variant) +
       categoryField('category', p?.category) +
-      '<div class="grid">' + amount('retail', 'Harga toko', p?.retail) + amount('market', 'Harga marketplace', p?.market) + '</div>' + initial, key);
+      '<div class="grid">' + amount('retail', 'Harga toko', p?.retail) + amount('market', 'Harga marketplace', p?.market) + '</div>' + initial + (p ? '<div>' + button('Hapus barang', 'product-delete', p.id) + '</div>' : ''), key);
   }
   if (action === 'purchase') {
     const suppliers = state.suppliers || [];
@@ -647,7 +714,7 @@ async function click(action, key, element) {
     const [id, index, partIndex] = key.split(':');
     const item = byId(state.sales, id).items[index];
     const part = item.components[partIndex];
-    const choices = [['', 'Pilih pengganti'], ...state.products.filter(p => p.id !== item.product && p.id !== part.product && !p.recipe?.length).map(p => [p.id, label(p)])];
+    const choices = [['', 'Pilih pengganti'], ...activeProducts().filter(p => p.id !== item.product && p.id !== part.product && !p.recipe?.length).map(p => [p.id, label(p)])];
     return form('Ganti komponen · ' + label(byId(state.products, part.product)), action,
       '<input type="hidden" name="line" value="' + esc(index) + '"><input type="hidden" name="part" value="' + esc(partIndex) + '">' +
       select('product', 'Barang pengganti (' + part.qty + ' unit)', choices), id);
@@ -698,7 +765,14 @@ document.addEventListener('click', event => {
 });
 
 document.addEventListener('input', event => {
-  const row = event.target.closest('.purchase-entry');
+  const target = event.target;
+  if (target.name && target.closest('.stock-filters') && target.id !== 'search') {
+    if (target.type === 'number' && !target.validity.valid) return;
+    (stockFilters[view] ??= {})[target.name] = target.value;
+    document.querySelector('#rows').innerHTML = pageRows();
+    return;
+  }
+  const row = target.closest('.purchase-entry');
   if (row && ['qty', 'cost'].includes(event.target.name)) {
     const qty = row.querySelector('[name=qty]');
     const cost = row.querySelector('[name=cost]');
@@ -828,7 +902,7 @@ document.addEventListener('submit', async event => {
     if (action === 'supplier' && values.continuePurchase === 'yes') await click('purchase', '');
     else if (action === 'purchase') purchaseDetail(body.purchaseId);
     else if (action === 'receive') purchaseDetail(id);
-    else if (id && !['product', 'supplier', 'purchase-delete', 'recipe', 'build-stock'].includes(action)) saleDetail(id);
+    else if (id && !['product', 'product-delete', 'supplier', 'purchase-delete', 'recipe', 'build-stock'].includes(action)) saleDetail(id);
   } catch (error) {
     if (error.status === 401) chooseRole(error.message);
     else if (dialog.open) {

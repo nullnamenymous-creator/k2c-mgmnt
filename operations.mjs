@@ -4,6 +4,7 @@ export function fail(message, status = 400) {
   throw Object.assign(new Error(message), { status });
 }
 const id = () => randomUUID();
+const productKey = value => clean(value).normalize('NFKC').replace(/\s+/g, ' ').toLowerCase();
 const clean = value => typeof value === 'string' ? value.trim() : '';
 function required(value, label) {
   if (!clean(value)) fail(label + ' wajib diisi.');
@@ -38,6 +39,7 @@ export function apply(state, action, input, user, files = []) {
     const p = find(state.products, product);
     if (p.stock + qty < 0) fail('Stok fisik tidak cukup.');
     p.stock += qty;
+    if (qty > 0 && p.archivedAt) delete p.archivedAt;
     state.movements.unshift({ product, qty, reason, reference, actor, at });
   }
   function history(sale, status) {
@@ -45,7 +47,11 @@ export function apply(state, action, input, user, files = []) {
     sale.history.push({ status, actor, at });
   }
   function transactionProduct(line, channel) {
-    if (line.product !== 'new') return find(state.products, line.product);
+    if (line.product !== 'new') {
+      const product = find(state.products, line.product);
+      if (product.archivedAt) fail('Barang sudah dihapus dari daftar aktif.');
+      return product;
+    }
     const draft = line.newProduct;
     if (!draft || typeof draft !== 'object') fail('Isi data produk baru.');
     const purchase = channel === undefined;
@@ -75,23 +81,38 @@ export function apply(state, action, input, user, files = []) {
     const seen = new Set();
     product.recipe = input.components.map(line => {
       const component = find(state.products, line.product);
-      if (component.id === product.id || component.recipe?.length || seen.has(component.id)) fail('Pilih komponen berbeda yang bukan paket.');
+      if (component.archivedAt || component.id === product.id || component.recipe?.length || seen.has(component.id)) fail('Pilih komponen berbeda yang bukan paket.');
       seen.add(component.id);
       return { product: component.id, qty: number(line.qty, 'Jumlah per paket', 1) };
     });
     if (product.recipe.length && state.products.some(other => other.recipe?.some(line => line.product === product.id))) fail('Barang ini sudah dipakai sebagai komponen paket lain.');
     return product;
   }
+  if (action === 'product-delete') {
+    allow('admin');
+    const product = find(state.products, input.id);
+    if (product.archivedAt) return product;
+    if (product.stock || reserved(state, product.id)) fail('Barang masih punya stok atau sedang dipesan.');
+    if (state.products.some(p => !p.archivedAt && p.recipe?.some(line => line.product === product.id))) fail('Barang masih dipakai sebagai komponen paket.');
+    product.archivedAt = at;
+    return product;
+  }
   if (action === 'product') {
     allow('admin');
-    const p = input.id ? find(state.products, input.id) : { id: id(), stock: 0, cost: 0 };
+    const archived = !input.id && state.products.find(row => row.archivedAt &&
+      productKey(row.name) === productKey(input.name) && productKey(row.variant) === productKey(input.variant));
+    const p = input.id ? find(state.products, input.id) : archived || { id: id(), stock: 0, cost: 0 };
     const requestedName = required(input.name, 'Nama barang');
-    const existingName = state.products.find(row => row.name.trim().toLowerCase() === requestedName.toLowerCase());
-    const name = input.id ? p.name : existingName?.name ?? requestedName;
+    if (input.id && p.archivedAt) fail('Barang sudah dihapus dari daftar aktif.');
+    const existingName = state.products.find(row => !row.archivedAt && productKey(row.name) === productKey(requestedName));
+    const name = existingName?.name ?? requestedName;
     const variant = clean(input.variant);
-    if (state.products.some(row => row.id !== p.id && row.name.toLowerCase() === name.toLowerCase() && row.variant.toLowerCase() === variant.toLowerCase())) fail('Barang dan varian sudah ada.');
+    if (state.products.some(row => !row.archivedAt && row.id !== p.id && productKey(row.name) === productKey(name) && productKey(row.variant) === productKey(variant))) {
+      fail('Nama barang dan varian ini sudah ada. Pilih barang yang sudah tercatat.');
+    }
     Object.assign(p, { name, variant, category: required(input.category, 'Kategori'), retail: number(input.retail, 'Harga toko'), market: number(input.market, 'Harga marketplace') });
-    if (!input.id) state.products.push(p);
+    if (archived) delete p.archivedAt;
+    else if (!input.id) state.products.push(p);
     if (input.initialStock !== undefined && input.initialStock !== '') {
       const qty = number(input.initialStock, 'Stok awal');
       if (qty) {
@@ -226,7 +247,7 @@ export function apply(state, action, input, user, files = []) {
     const part = item?.components?.[number(input.part, 'Baris komponen')];
     if (!part) fail('Komponen pesanan tidak ditemukan.', 404);
     const replacement = find(state.products, input.product);
-    if (replacement.id === part.product || replacement.id === item.product || replacement.recipe?.length) fail('Pilih barang pengganti yang berbeda dan bukan paket.');
+    if (replacement.archivedAt || replacement.id === part.product || replacement.id === item.product || replacement.recipe?.length) fail('Pilih barang pengganti yang berbeda dan bukan paket.');
     if (free(state, replacement) < part.qty) fail('Stok tersedia tidak cukup untuk ' + replacement.name + '.');
     const previous = find(state.products, part.product);
     item.cost += (replacement.cost - (part.cost ?? previous.cost)) * part.qty / item.qty;
@@ -240,7 +261,7 @@ export function apply(state, action, input, user, files = []) {
     if (!item?.parts) fail('Barang ini tidak menunggu rakitan.');
     const p = find(state.products, input.product);
     const qty = number(input.qty, 'Jumlah komponen', 1);
-    if (p.id === item.product || free(state, p) < qty) fail('Komponen tidak tersedia.');
+    if (p.archivedAt || p.id === item.product || free(state, p) < qty) fail('Komponen tidak tersedia.');
     move(p.id, -qty, 'Pemakaian komponen', sale.id);
     item.parts.push({ product: p.id, qty, cost: p.cost });
   } else if (action === 'ready') {
