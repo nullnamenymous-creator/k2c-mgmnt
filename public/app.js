@@ -103,7 +103,7 @@ function salesTable(rows, online, empty = 'Belum ada transaksi.', numberFrom) {
     const first = online ? '<strong>' + esc(s.order) + '</strong><small>' + marketBadge(s.channel) + (s.tracking ? ' ' + esc(s.tracking) : '') + '</small>' : esc(date(s.at));
     const goods = esc(label(s.items[0])) + '<small>' + esc(s.items[0].qty) + ' unit' + (s.items.length > 1 ? ' · +' + (s.items.length - 1) + ' baris' : '') + '</small>';
     const row = [first + '<small>' + esc(s.buyer || 'Pembeli umum') + '</small>', goods];
-    if (online) row.push(stage(s.status));
+    if (online) row.push(s.status === 'Pesanan masuk' ? '<span class="tag new-order">Pesanan masuk</span>' : stage(s.status));
     if (can('admin')) row.push('<span class="sale-total">' + fmt(total(s)) + '</span>');
     row.push(button('Buka', 'sale-detail', s.id));
     return row;
@@ -191,6 +191,7 @@ function pageRows() {
     const sales = state.sales.filter(s => (online ? s.channel === marketplace : s.channel === 'Toko') && (!filter || s.status === filter) &&
       matches(s.order, s.tracking, s.channel, s.buyer, ...s.items.map(label)));
     if (!online) return salesTable(sales, false);
+    sales.sort((a, b) => Number(b.status === 'Pesanan masuk') - Number(a.status === 'Pesanan masuk'));
     const page = paginate(sales);
     return salesTable(page.items, true, undefined, page.start + 1) + listPagination(page);
   }

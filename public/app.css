@@ -339,3 +339,7 @@ dialog::backdrop{background:#0f1d35a6}
   .sales-list.has-status.has-total.numbered-table tbody td:nth-child(4){grid-column:1;text-align:left}
   .sales-list.has-total.numbered-table tbody td:nth-last-child(2){grid-column:2;text-align:right}
 }
+
+.excel-admin .sales-list tbody tr:has(.new-order){background:#fff1c2;box-shadow:inset 4px 0 #db7900}
+.excel-admin .sales-list tbody tr:has(.new-order):hover{background:#ffe8a0}
+.excel-admin .sales-list .new-order{background:#ffcb47;color:#542e00;font-weight:700}
