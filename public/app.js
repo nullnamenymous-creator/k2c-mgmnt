@@ -371,6 +371,54 @@ function form(title, action, body, id = '', submit = 'Simpan') {
     '<button class="button primary">' + esc(submit) + '</button></div></form>');
 }
 
+function watermarkRecording(video) {
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d', { alpha: false });
+  if (!ctx || !canvas.captureStream || !canvas.width || !canvas.height) {
+    throw new Error('Browser ini belum mendukung rekaman dengan watermark.');
+  }
+  const { width, height } = canvas;
+  const scale = Math.min(width, height);
+  const inset = Math.round(scale * .025);
+  const padding = Math.round(scale * .02);
+  const titleSize = Math.round(scale * .045);
+  const addressSize = Math.round(scale * .032);
+  const boxHeight = titleSize + addressSize + padding * 3;
+  const top = height - inset - boxHeight;
+  const title = 'K2C KOMPUTINDO';
+  const address = 'KP. RUMBIA, PEBAYURAN, KAB. BEKASI';
+  const titleFont = '700 ' + titleSize + 'px sans-serif';
+  const addressFont = '600 ' + addressSize + 'px sans-serif';
+  ctx.font = titleFont;
+  const titleWidth = ctx.measureText(title).width;
+  ctx.font = addressFont;
+  const boxWidth = Math.min(width - inset * 2, Math.ceil(Math.max(titleWidth, ctx.measureText(address).width)) + padding * 2);
+  let frame;
+  function draw() {
+    ctx.drawImage(video, 0, 0, width, height);
+    ctx.fillStyle = 'rgba(0, 0, 0, .68)';
+    ctx.fillRect(inset, top, boxWidth, boxHeight);
+    ctx.fillStyle = '#fff';
+    ctx.textBaseline = 'top';
+    ctx.font = titleFont;
+    ctx.fillText(title, inset + padding, top + padding, boxWidth - padding * 2);
+    ctx.font = addressFont;
+    ctx.fillText(address, inset + padding, top + titleSize + padding * 2, boxWidth - padding * 2);
+  }
+  const stream = canvas.captureStream(30);
+  function renderFrame() {
+    draw();
+    frame = requestAnimationFrame(renderFrame);
+  }
+  frame = requestAnimationFrame(renderFrame);
+  return { stream, stop() {
+    cancelAnimationFrame(frame);
+    stream.getTracks().forEach(track => track.stop());
+  } };
+}
+
 function recordTest(id) {
   form('Rekam video tes', 'ready', '<div class="camera"><video playsinline hidden aria-label="Pratinjau video tes"></video>' +
     '<p class="muted" role="status">Buka kamera untuk merekam video MP4.</p><div class="row">' +
@@ -381,6 +429,8 @@ function recordTest(id) {
   const control = formElement.querySelector('[data-camera]');
   const save = formElement.querySelector('button:not([type=button])');
   let stream;
+  let watermarked;
+  let mimeType;
   let recorder;
   let preview;
   let closed = false;
@@ -390,6 +440,8 @@ function recordTest(id) {
   save.disabled = true;
 
   function stopCamera() {
+    watermarked?.stop();
+    watermarked = undefined;
     stream?.getTracks().forEach(track => track.stop());
     stream = undefined;
     video.srcObject = null;
@@ -430,7 +482,7 @@ function recordTest(id) {
       }
       if (mode === 'open') {
         if (!navigator.mediaDevices?.getUserMedia) throw new Error('Kamera memerlukan localhost atau alamat HTTPS.');
-        const mimeType = ['video/mp4;codecs=avc1.42001f', 'video/mp4'].find(type => globalThis.MediaRecorder?.isTypeSupported(type));
+        mimeType = ['video/mp4;codecs=avc1.42001f', 'video/mp4'].find(type => globalThis.MediaRecorder?.isTypeSupported(type));
         if (!mimeType) throw new Error('Browser ini belum bisa merekam MP4. Buka aplikasi di browser yang mendukung rekaman MP4.');
         control.disabled = true;
         const camera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
@@ -439,7 +491,6 @@ function recordTest(id) {
           return;
         }
         stream = camera;
-        recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2_000_000 });
         resetPreview();
         save.disabled = true;
         video.hidden = false;
@@ -449,6 +500,8 @@ function recordTest(id) {
         if (!closed) setMode('start', 'Mulai rekam', 'Kamera siap.');
         return;
       }
+      watermarked = watermarkRecording(video);
+      recorder = new MediaRecorder(watermarked.stream, { mimeType, videoBitsPerSecond: 2_000_000 });
       const chunks = [];
       let size = 0;
       let failed = false;
