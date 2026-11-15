@@ -25,8 +25,8 @@ h1,h2,h3,p{margin:0}
 main{min-width:0}
 .topbar{display:flex;align-items:center;justify-content:space-between;min-height:62px;padding:0 32px;background:#fff;border-bottom:1px solid var(--line);gap:12px;color:var(--muted)}
 .content{padding:30px 32px 48px;max-width:1500px;margin:auto}
-.page-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px}
-h1{font-size:clamp(27px,4vw,36px);font-weight:650;letter-spacing:-.045em}
+.page-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
+:is(.page-header,.tech-title) h1{font-size:clamp(16px,2vw,20px);font-weight:700;line-height:1.25;letter-spacing:.035em;text-transform:uppercase}
 h2{font-size:19px;letter-spacing:-.02em}
 h3{font-size:15px}
 .muted{color:var(--muted)}
@@ -95,7 +95,7 @@ summary{cursor:pointer}
 .tech-tabs span,.tech-order-head small{color:var(--muted)}
 .tech-title,.tech-order-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .tech-title{margin-bottom:10px}
-.tech-title h1{font-size:clamp(20px,5vw,27px)}
+.tech-title h1{font-size:16px}
 .tech-group,.tech-history,.tech-empty{margin-top:14px}
 .tech-group h2{margin-bottom:8px;font-size:16px}
 .tech-group h2 span{color:var(--muted);margin-left:4px}
@@ -286,10 +286,12 @@ dialog::backdrop{background:#0f1d35a6}
 :is(.excel-admin,.excel-dialog) th{background:#dceee2;color:#19482f;white-space:normal}
 :is(.excel-admin,.excel-dialog) tbody tr:nth-child(even){background:#f3f8f4}
 :is(.excel-admin,.excel-dialog) tbody tr:hover{background:#e9f4ec}
-.excel-admin .stock-sheet td:nth-child(2){width:24%}
+.excel-admin .stock-sheet td:nth-child(2){width:22%}
 .excel-admin .stock-sheet td:nth-child(3){width:15%}
 .excel-admin .stock-sheet :is(th,td):nth-child(8){white-space:nowrap}
-.excel-admin .stock-sheet td:last-child .row{flex-wrap:nowrap}
+.excel-admin .stock-sheet :is(th,td):last-child{width:156px}
+.excel-admin .stock-sheet td:last-child .row{display:flex;flex-wrap:nowrap;gap:6px}
+.excel-admin .stock-sheet td:last-child .button{flex-shrink:0;white-space:nowrap;overflow-wrap:normal}
 .excel-admin .stock-empty{background:#fae6e5;color:#922b27}
 @media(min-width:941px){
   .excel-admin .table-wrap th{position:sticky;top:0;z-index:1}
