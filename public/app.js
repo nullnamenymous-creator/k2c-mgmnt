@@ -13,7 +13,7 @@ const total = sale => sale.items.reduce((sum, item) => sum + item.price * item.q
 const modalCost = sale => sale.items.reduce((sum, item) => sum + (item.parts ? item.parts.reduce((cost, part) => cost + part.cost * part.qty, 0) : item.cost * item.qty), 0);
 const brand = '<div class="brand"><img src="/icon.svg" alt=""><div><strong>K2C Management</strong><small>K2C Komputindo</small></div></div>';
 const statuses = ['Pesanan masuk', 'Siap kirim', 'Dikirim', 'Retur diterima', 'Bukti retur lengkap', 'Retur diperiksa', 'Dibatalkan'];
-const menus = { home: 'Ringkasan', online: 'Marketplace', shop: 'Penjualan Toko', stock: 'Stok Barang', buy: 'Pembelian', suppliers: 'Supplier' };
+const menus = { home: 'Ringkasan', online: 'Marketplace', shop: 'Penjualan Toko', stock: 'Stok Barang', buy: 'Pembelian', low: 'Stok Menipis', suppliers: 'Supplier' };
 const marketplaces = ['Shopee', 'Tokopedia'];
 const marketTheme = channel => marketplaces.includes(channel) ? ' data-market="' + channel.toLowerCase() + '"' : '';
 const marketBadge = channel => '<span class="market-badge"' + marketTheme(channel) + '>' + esc(channel) + '</span>';
@@ -109,15 +109,18 @@ function pageRows() {
     return salesTable(state.sales.filter(s => (online ? s.channel === marketplace : s.channel === 'Toko') && (!filter || s.status === filter) &&
       matches(s.order, s.tracking, s.channel, s.buyer, ...s.items.map(label))), online);
   }
-  if (view === 'stock') {
-    const columns = ['Nama barang', 'Varian', 'Tersedia', 'Dipesan', 'Harga toko', 'Harga marketplace', 'Aksi'];
-    const rows = state.products.filter(p => matches(label(p), p.category)).map(p => [
+  if (view === 'stock' || view === 'low') {
+    const columns = ['Nama barang', 'Varian', 'Tersedia', 'Dipesan', 'Harga toko', 'Harga marketplace', 'Status', 'Aksi'];
+    const products = state.products.filter(p => matches(label(p), p.category) && (view !== 'low' || p.stock - p.reserved <= 3));
+    if (view === 'low') products.sort((a, b) => (a.stock - a.reserved) - (b.stock - b.reserved));
+    const rows = products.map(p => [
       '<strong>' + esc(p.name) + '</strong><small>' + esc(p.category) + '</small>',
       esc(p.variant || '—'),
       '<strong>' + (p.stock - p.reserved) + '</strong>' + (p.inspection ? '<small>' + p.inspection + ' retur dicek</small>' : ''),
       p.reserved,
       fmt(p.retail),
       fmt(p.market),
+      p.stock <= p.reserved ? '<span class="tag stock-empty">Habis</span>' : p.stock - p.reserved <= 3 ? '<span class="tag warn">Menipis</span>' : '<span class="tag good">Tersedia</span>',
       '<div class="row">' + button('Edit', 'product', p.id) + button('Komponen', 'recipe', p.id) + '</div>' + (p.recipe?.length ? '<small>Bisa dirakit: ' + Math.max(0, Math.min(...p.recipe.map(line => { const part = byId(state.products, line.product); return part ? Math.floor((part.stock - part.reserved) / line.qty) : 0; }))) + ' paket</small>' : ''),
     ]);
     return table(columns, rows, 'Belum ada barang yang sesuai.', 'stock-sheet');
@@ -207,8 +210,8 @@ function render() {
     content = dashboard(online);
   } else {
     const titles = { online: ['Input pesanan', 'sale-new'], shop: ['Transaksi baru', 'sale-new'], stock: ['Tambah barang', 'product'], buy: ['Catat pembelian', 'purchase'], suppliers: ['Tambah supplier', 'supplier'] };
-    if (admin && (view !== 'online' || marketplaces.includes(marketplace))) action = view === 'online' ? button('Input pesanan ' + marketplace, 'sale-new', marketplace, 'primary') : button(...titles[view], '', 'primary');
-    const placeholders = { online: 'Cari resi, nomor pesanan, atau pembeli', shop: 'Cari pembeli atau barang', stock: 'Cari barang atau varian', buy: 'Cari supplier atau barang', suppliers: 'Cari nama atau nomor WhatsApp' };
+    if (admin && titles[view] && (view !== 'online' || marketplaces.includes(marketplace))) action = view === 'online' ? button('Input pesanan ' + marketplace, 'sale-new', marketplace, 'primary') : button(...titles[view], '', 'primary');
+    const placeholders = { online: 'Cari resi, nomor pesanan, atau pembeli', shop: 'Cari pembeli atau barang', stock: 'Cari barang atau varian', low: 'Cari stok menipis atau habis', buy: 'Cari supplier atau barang', suppliers: 'Cari nama atau nomor WhatsApp' };
     const statusFilter = view === 'online' ? '<div>' + select('status', 'Status', [['', 'Semua status'], ...statuses.map(s => [s, s])], filter) + '</div>' : '';
     content = '<section class="panel"><div class="toolbar' + (view === 'online' ? ' market-toolbar' : '') + '">' + search(placeholders[view]) + statusFilter + '</div><div id="rows">' + pageRows() + '</div></section>';
     if (view === 'online') {
@@ -223,7 +226,7 @@ function render() {
       esc(label(byId(state.products, m.product))), (m.qty > 0 ? '+' : '') + m.qty, esc(m.reason), esc(m.actor), esc(date(m.at)),
     ]), 'Belum ada pergerakan stok.') + '</details>';
   }
-  app.innerHTML = '<div class="shell"><aside class="sidebar">' + brand + '<nav aria-label="Navigasi utama">' +
+  app.innerHTML = '<div class="shell excel-admin"><aside class="sidebar">' + brand + '<nav aria-label="Navigasi utama">' +
     nav.map(([key, title]) => '<button class="nav-button" data-action="navigate" data-key="' + key + '"' + (key === view ? ' aria-current="page"' : '') + '>' + title + '</button>').join('') +
     '</nav><div class="account"><strong>' + esc(state.user.name) + '</strong>' + button('Ganti peran', 'logout', '', 'dark-button') +
     '</div></aside><main><div class="topbar"><span>' + esc(new Intl.DateTimeFormat('id-ID', { dateStyle: 'full' }).format(new Date())) + '</span>' +
@@ -232,6 +235,7 @@ function render() {
 
 function open(title, body) {
   releaseCamera?.();
+  dialog.classList.toggle('excel-dialog', can('admin'));
   dialog.innerHTML = '<header class="dialog-head"><h2 id="dialog-title">' + esc(title) + '</h2>' + button('Tutup', 'close') +
     '</header><div class="dialog-body">' + body + '</div>';
   if (!dialog.open) dialog.showModal();

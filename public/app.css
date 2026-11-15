@@ -272,3 +272,38 @@ dialog::backdrop{background:#0f1d35a6}
 @media(max-width:1050px){.summary-grid{grid-template-columns:minmax(0,1fr)}}
 
 .tech-order[data-market]:has(.tag.good){background:#f0faf4;border-color:#90c9a6;border-left-color:#218a4c}
+
+/* Workbook appearance for Admin. */
+.excel-admin,.excel-dialog{--accent:#16704b;--line:#cdded4;color:#17362a}
+.excel-admin{--nav:#135b40;background:#f4f8f5}
+.excel-admin .sidebar nav .nav-button[aria-current=page]{box-shadow:inset 3px 0 #a8e4bd;background:#206c50}
+.excel-admin .sidebar .nav-button:hover,.excel-admin .sidebar .dark-button{background:#206c50}
+.excel-admin .topbar,.excel-admin .toolbar,.excel-dialog .dialog-head{background:#edf5ef}
+.excel-admin .panel-head{background:#edf5ef}
+:is(.excel-admin,.excel-dialog) .primary{background:var(--accent);border-color:var(--accent)}
+:is(.excel-admin,.excel-dialog) .primary:hover{background:#105b3d}
+:is(.excel-admin,.excel-dialog) :is(th,td){border:1px solid var(--line);padding:7px 10px}
+:is(.excel-admin,.excel-dialog) th{background:#dceee2;color:#19482f;white-space:normal}
+:is(.excel-admin,.excel-dialog) tbody tr:nth-child(even){background:#f3f8f4}
+:is(.excel-admin,.excel-dialog) tbody tr:hover{background:#e9f4ec}
+.excel-admin .stock-sheet td:first-child{width:24%}
+.excel-admin .stock-sheet td:nth-child(2){width:15%}
+.excel-admin .stock-sheet :is(th,td):nth-child(7){white-space:nowrap}
+.excel-admin .stock-sheet td:last-child .row{flex-wrap:nowrap}
+.excel-admin .stock-empty{background:#fae6e5;color:#922b27}
+@media(min-width:941px){
+  .excel-admin .table-wrap th{position:sticky;top:0;z-index:1}
+}
+@media(max-width:940px){
+  .excel-admin .stock-sheet{overflow:auto;max-height:65dvh}
+  .excel-admin .stock-sheet table{display:table;min-width:760px}
+  .excel-admin .stock-sheet thead{display:table-header-group;position:static;width:auto;height:auto;clip-path:none;overflow:visible}
+  .excel-admin .stock-sheet tbody{display:table-row-group}
+  .excel-admin .stock-sheet tr{display:table-row}
+  .excel-admin .stock-sheet :is(td,th){display:table-cell}
+  .excel-admin .stock-sheet .mobile-label{display:none}
+  .excel-admin .stock-sheet th{position:sticky;top:0;z-index:2}
+  .excel-admin .stock-sheet :is(th,td):first-child{position:sticky;left:0;min-width:130px}
+  .excel-admin .stock-sheet td:first-child{z-index:1;background:#f6faf7}
+  .excel-admin .stock-sheet th:first-child{z-index:3}
+}
