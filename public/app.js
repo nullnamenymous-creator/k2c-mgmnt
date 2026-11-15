@@ -1,4 +1,4 @@
-import { purchasePdf } from './purchase-pdf.js';
+import { purchasePdf, salesPdf } from './purchase-pdf.js';
 import { financialReport, reportDay, reportRange } from './financial-report.js';
 
 const app = document.querySelector('#app');
@@ -14,7 +14,7 @@ const total = sale => sale.items.reduce((sum, item) => sum + item.price * item.q
 const modalCost = sale => sale.items.reduce((sum, item) => sum + (item.parts ? item.parts.reduce((cost, part) => cost + part.cost * part.qty, 0) : item.cost * item.qty), 0);
 const brand = '<div class="brand"><img src="/icon.svg" alt=""><div><strong>K2C Management</strong><small>K2C Komputindo</small></div></div>';
 const statuses = ['Pesanan masuk', 'Siap kirim', 'Dikirim', 'Retur diterima', 'Bukti retur lengkap', 'Retur diperiksa', 'Dibatalkan'];
-const menus = { home: 'Ringkasan', online: 'Marketplace', shop: 'Penjualan Toko', stock: 'Stok Barang', buy: 'Pembelian', finance: 'Laba Rugi', low: 'Stok Menipis', suppliers: 'Supplier' };
+const menus = { home: 'Ringkasan', online: 'Marketplace', shop: 'Penjualan Toko', documents: 'Dokumen Penjualan', stock: 'Stok Barang', buy: 'Pembelian', finance: 'Laba Rugi', low: 'Stok Menipis', suppliers: 'Supplier' };
 const marketplaces = ['Shopee', 'Tokopedia'];
 const marketTheme = channel => marketplaces.includes(channel) ? ' data-market="' + channel.toLowerCase() + '"' : '';
 const marketBadge = channel => '<span class="market-badge"' + marketTheme(channel) + '>' + esc(channel) + '</span>';
@@ -220,6 +220,19 @@ function pageRows() {
     ]);
     return table(columns, rows, 'Belum ada barang yang sesuai.', 'stock-sheet', page.start + 1) + listPagination(page);
   }
+  if (view === 'documents') {
+    const sales = state.sales.filter(sale => (!filter || sale.channel === filter) &&
+      matches(saleReference(sale), sale.tracking, sale.buyer, ...sale.items.map(label)));
+    sales.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+    const page = paginate(sales);
+    const rows = page.items.map(sale => [
+      '<strong>' + esc(saleReference(sale)) + '</strong><small>' + esc(date(sale.at)) + '</small>',
+      esc(sale.buyer || 'Pembeli umum'), esc(sale.channel), stage(sale.status), fmt(total(sale)),
+      button('Buat dokumen', 'sale-document', sale.id),
+    ]);
+    return table(['Transaksi', 'Pembeli', 'Kanal', 'Status', 'Total', 'Aksi'], rows,
+      'Belum ada transaksi yang sesuai.', 'document-sales', page.start + 1) + listPagination(page);
+  }
   if (view === 'suppliers') return table(['Supplier', 'WhatsApp', 'Pembelian', 'Aksi'], (state.suppliers || []).filter(s => matches(s.name, s.phone)).map(s => [
     '<strong>' + esc(s.name) + '</strong>', '+' + esc(s.phone),
     state.purchases.filter(purchase => purchase.supplierId === s.id).length,
@@ -328,7 +341,7 @@ function financeView() {
 function render() {
   if (can('teknisi')) return renderTechnician();
   const admin = can('admin');
-  const nav = Object.entries(menus).filter(([key]) => admin || !['shop', 'buy'].includes(key));
+  const nav = Object.entries(menus).filter(([key]) => admin || !['shop', 'buy', 'documents'].includes(key));
   if (!nav.some(([key]) => key === view)) view = 'home';
   const online = state.sales.filter(s => s.channel !== 'Toko');
   let content;
@@ -343,8 +356,9 @@ function render() {
   } else {
     const titles = { online: ['Input pesanan', 'sale-new'], shop: ['Transaksi baru', 'sale-new'], stock: ['Tambah barang', 'product'], buy: ['Catat pembelian', 'purchase'], suppliers: ['Tambah supplier', 'supplier'] };
     if (admin && titles[view] && (view !== 'online' || marketplaces.includes(marketplace))) action = view === 'online' ? button('Input pesanan ' + marketplace, 'sale-new', marketplace, 'primary') : button(...titles[view], '', 'primary');
-    const placeholders = { online: 'Cari resi, nomor pesanan, atau pembeli', shop: 'Cari pembeli atau barang', stock: 'Cari barang atau varian', low: 'Cari stok menipis atau habis', buy: 'Cari supplier atau barang', suppliers: 'Cari nama atau nomor WhatsApp' };
-    const statusFilter = view === 'online' ? '<div>' + select('status', 'Status', [['', 'Semua status'], ...statuses.map(s => [s, s])], filter) + '</div>' : '';
+    const placeholders = { online: 'Cari resi, nomor pesanan, atau pembeli', shop: 'Cari pembeli atau barang', documents: 'Cari nomor transaksi, resi, pembeli, atau barang', stock: 'Cari barang atau varian', low: 'Cari stok menipis atau habis', buy: 'Cari supplier atau barang', suppliers: 'Cari nama atau nomor WhatsApp' };
+    const documentChannels = view === 'documents' ? [...new Set(['Toko', ...marketplaces, ...state.sales.map(sale => sale.channel)])] : [];
+    const statusFilter = view === 'online' ? '<div>' + select('status', 'Status', [['', 'Semua status'], ...statuses.map(s => [s, s])], filter) + '</div>' : view === 'documents' ? select('documentChannel', 'Kanal', [['', 'Semua kanal'], ...documentChannels.map(channel => [channel, channel])], filter) : '';
     content = '<section class="panel"><div class="toolbar' + (view === 'online' ? ' market-toolbar' : '') + '">' + search(placeholders[view]) + statusFilter + '</div><div id="rows">' + pageRows() + '</div></section>';
     if (['stock', 'low'].includes(view)) content = '<section class="panel">' + stockTools(placeholders[view]) + '<div id="rows">' + pageRows() + '</div></section>';
     if (view === 'online') {
@@ -649,6 +663,45 @@ function line() {
     '<div>' + button('Hapus baris', 'line-remove') + '</div></div>';
 }
 
+const saleReference = sale => sale.order || sale.id.slice(0, 8).toUpperCase();
+
+function saleDocument(sale) {
+  open('Buat dokumen penjualan', '<div class="document-meta"><strong>' + esc(saleReference(sale)) + '</strong><span>' +
+    esc(sale.buyer || 'Pembeli umum') + ' &middot; ' + esc(sale.channel) + '</span><strong>' + fmt(total(sale)) + '</strong></div>' +
+    '<form data-sale-document="' + esc(sale.id) + '">' +
+    select('kind', 'Jenis dokumen', [['nota', 'Nota penjualan'], ['invoice', 'Invoice penjualan'], ['garansi', 'Kartu garansi']]) +
+    '<fieldset class="document-warranty" disabled hidden><legend>Rincian garansi</legend><div class="grid">' +
+    field('warrantyStart', 'Tanggal mulai', reportDay(new Date(sale.at)), 'date', 'required') +
+    field('warrantyDays', 'Masa garansi (hari)', '', 'number', 'min="1" max="3650" step="1" required') +
+    '</div>' + field('warrantyNotes', 'Ketentuan garansi (opsional)', '', 'text', 'maxlength="160"') + '</fieldset>' +
+    '<div class="actions">' + button('Buka PDF untuk cetak', 'sale-document-print', sale.id) +
+    button('Unduh PDF', 'sale-document-download', sale.id, 'primary') + '</div></form>');
+}
+
+function saleDocumentOutput(sale, print) {
+  const form = dialog.querySelector('[data-sale-document]');
+  if (!form.reportValidity()) return;
+  const fields = new FormData(form);
+  const kind = fields.get('kind');
+  const number = saleReference(sale);
+  const warranty = kind === 'garansi' ? {
+    start: new Intl.DateTimeFormat('id-ID', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(fields.get('warrantyStart') + 'T00:00:00Z')),
+    days: Number(fields.get('warrantyDays')), notes: fields.get('warrantyNotes'),
+  } : undefined;
+  const bytes = salesPdf({ number, date: date(sale.at), buyer: sale.buyer || 'Pembeli umum', channel: sale.channel,
+    status: sale.status, items: sale.items.map(item => ({ name: label(item), qty: item.qty, cost: item.price })), kind, warranty });
+  const filename = kind + '-' + number.replace(/[^a-z0-9_-]/gi, '_') + '.pdf';
+  const url = URL.createObjectURL(new File([bytes], filename, { type: 'application/pdf' }));
+  const link = document.createElement('a');
+  link.href = url;
+  if (print) {
+    link.target = '_blank';
+    link.rel = 'noopener';
+  } else link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
 function saleDetail(id) {
   const s = byId(state.sales, id);
   const admin = can('admin');
@@ -768,6 +821,10 @@ async function click(action, key, element) {
     }
     render();
     return refresh();
+  }
+  if (can('admin')) {
+    if (action === 'sale-document') return saleDocument(byId(state.sales, key));
+    if (['sale-document-print', 'sale-document-download'].includes(action)) return saleDocumentOutput(byId(state.sales, key), action === 'sale-document-print');
   }
   if (action === 'sale-detail') return saleDetail(key);
   if (action === 'purchase-detail') return purchaseDetail(key);
@@ -980,7 +1037,11 @@ document.addEventListener('change', event => {
     label.hidden = input.disabled = target.value !== customProductName;
     if (!label.hidden) input.focus();
   }
-  if (target.name === 'status') {
+  if (target.name === 'kind' && target.form?.dataset.saleDocument) {
+    const details = target.form.querySelector('.document-warranty');
+    details.hidden = details.disabled = target.value !== 'garansi';
+  }
+  if (target.name === 'status' || target.name === 'documentChannel') {
     filter = target.value;
     listPage = 1;
     document.querySelector('#rows').innerHTML = pageRows();
@@ -1008,6 +1069,7 @@ document.addEventListener('change', event => {
 document.addEventListener('submit', async event => {
   event.preventDefault();
   const form = event.target;
+  if (form.dataset.saleDocument) return;
   const submit = form.querySelector('button:not([type=button])');
   const errorBox = form.querySelector('.error');
   if (submit.disabled) return;

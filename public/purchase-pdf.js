@@ -7,11 +7,21 @@ const literal = value => latin(value).replace(/[\\()]/g, '\\$&');
 const wrap = (value, width) => latin(value).trim().match(new RegExp('.{1,' + width + '}(?: |$)|.{1,' + width + '}', 'g')) || [''];
 
 export function purchasePdf({ number, date, supplier, items }) {
+  return transactionPdf({ number, date, customer: supplier, items, title: 'NOTA PEMBELIAN', party: 'SUPPLIER', totalLabel: 'TOTAL PEMBELIAN' });
+}
+
+export function salesPdf({ number, date, buyer, channel, status, items, kind, warranty }) {
+  const title = { nota: 'NOTA PENJUALAN', invoice: 'INVOICE PENJUALAN', garansi: 'KARTU GARANSI' }[kind];
+  return transactionPdf({ number, date, customer: buyer, items, title, party: 'PEMBELI',
+    totalLabel: 'TOTAL TRANSAKSI', saleInfo: channel + ' / ' + status, warranty });
+}
+
+function transactionPdf({ number, date, customer, items, title, party, totalLabel, saleInfo, warranty }) {
   const objects = ['', '',
     ...['Helvetica', 'Helvetica-Bold', 'Courier'].map(font =>
       '<< /Type /Font /Subtype /Type1 /BaseFont /' + font + ' /Encoding /WinAnsiEncoding >>')];
   const rows = items.flatMap((item, index) => {
-    const names = wrap(item.name, 22);
+    const names = wrap(item.name, warranty ? 42 : 22);
     const chunks = [];
     for (let i = 0; i < names.length; i += 24) {
       chunks.push({ item, index, names: names.slice(i, i + 24), continuation: i > 0 });
@@ -40,15 +50,19 @@ export function purchasePdf({ number, date, supplier, items }) {
     text('K2C KOMPUTINDO', 40, 765, 20, 'F2');
     text('KP. RUMBIA PEBAYURAN KAB BEKASI', 40, 746, 9, 'F1', muted);
     text('081298406844', 40, 731, 9, 'F1', muted);
-    text('NOTA PEMBELIAN', 413, 765, 14, 'F2');
+    text(title, 390, 765, 14, 'F2');
     right('No. ' + number, 555, 746, 10);
     box(40, 659, 515, 55, '0.95 0.97 0.99');
-    text('SUPPLIER', 52, 697, 8, 'F2', muted);
-    wrap(latin(supplier).length > 70 ? latin(supplier).slice(0, 67) + '...' : supplier, 36).slice(0, 3).forEach((line, index) => text(line.trim(), 52, 680 - index * 9, 10, 'F2'));
+    text(party, 52, 697, 8, 'F2', muted);
+    wrap(latin(customer).length > 70 ? latin(customer).slice(0, 67) + '...' : customer, 36).slice(0, 3).forEach((line, index) => text(line.trim(), 52, 680 - index * 9, 10, 'F2'));
     text('TANGGAL', 370, 697, 8, 'F2', muted);
     text(date, 370, 680);
+    if (saleInfo) text(saleInfo, 370, 666, 8, 'F1', muted);
     box(40, 619, 515, 25, navy);
-    for (const [label, x] of [['NO.', 51], ['BARANG / VARIAN', 79], ['QTY', 290], ['HARGA SATUAN', 346], ['SUBTOTAL', 480]]) {
+    const headings = [['NO.', 51], ['BARANG / VARIAN', 79]];
+    if (warranty) headings.push(['QTY', 498]);
+    else headings.push(['QTY', 290], ['HARGA SATUAN', 346], ['SUBTOTAL', 480]);
+    for (const [label, x] of headings) {
       text(label, x, 628, 8, 'F2', '1 1 1');
     }
     y = 619;
@@ -62,17 +76,29 @@ export function purchasePdf({ number, date, supplier, items }) {
     row.names.forEach((line, index) => text(line.trim(), 79, y - 16 - index * 13, 10));
     if (!row.continuation) {
       text(row.index + 1, 51, y - 16, 9, 'F1', muted);
-      right(String(row.item.qty), 322, y - 16, 8);
-      right(money(row.item.cost), 433, y - 16, 8);
-      right(money(row.item.qty * row.item.cost), 545, y - 16, 8);
+      right(String(row.item.qty), warranty ? 544 : 322, y - 16, 8);
+      if (!warranty) {
+        right(money(row.item.cost), 433, y - 16, 8);
+        right(money(row.item.qty * row.item.cost), 545, y - 16, 8);
+      }
     }
     y -= height;
   }
-  if (y < 120) startPage();
-  const total = items.reduce((sum, item) => sum + item.qty * item.cost, 0);
-  box(285, y - 54, 270, 40, '0.92 0.95 0.99');
-  text('TOTAL PEMBELIAN', 297, y - 38, 10, 'F2');
-  right(money(total), 543, y - 38, 10);
+  if (warranty) {
+    const notes = warranty.notes ? wrap(warranty.notes, 78).map(line => line.trim()) : [];
+    const height = 68 + notes.length * 12;
+    if (y - height < 76) startPage();
+    box(40, y - height, 515, height - 12, '0.92 0.95 0.99');
+    text('MASA GARANSI', 52, y - 30, 10, 'F2');
+    text(warranty.days + ' hari sejak ' + warranty.start, 52, y - 47);
+    notes.forEach((line, index) => text(line, 52, y - 63 - index * 12, 9));
+  } else {
+    if (y < 120) startPage();
+    const total = items.reduce((sum, item) => sum + item.qty * item.cost, 0);
+    box(285, y - 54, 270, 40, '0.92 0.95 0.99');
+    text(totalLabel, 297, y - 38, 10, 'F2');
+    right(money(total), 543, y - 38, 10);
+  }
   pages.forEach((pageCommands, index) => {
     commands = pageCommands;
     box(40, 51, 515, 0.5, '0.86 0.89 0.93');

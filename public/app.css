@@ -350,3 +350,7 @@ dialog::backdrop{background:#0f1d35a6}
 .excel-admin .sales-list tbody tr:has(.shipped-order){background:#edf8ee;box-shadow:inset 4px 0 #38864b}
 .excel-admin .sales-list tbody tr:has(.shipped-order):hover{background:#e0f1e3}
 .excel-admin .sales-list .shipped-order{background:#c9e9cf;color:#174b2a;font-weight:700}
+
+.document-meta{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 16px;background:#edf5ef;padding:12px;margin-bottom:14px}
+.document-sales :is(th,td):last-child .button{white-space:nowrap;overflow-wrap:normal}
+.document-warranty[hidden]{display:none}
