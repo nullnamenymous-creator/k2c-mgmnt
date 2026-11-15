@@ -81,15 +81,20 @@ async function refresh() {
   render();
 }
 
-function table(columns, rows, empty, className = '') {
+function table(columns, rows, empty, className = '', numberFrom) {
   if (!rows.length) return '<p class="empty">' + esc(empty) + '</p>';
+  if (numberFrom !== undefined) {
+    columns = ['No.', ...columns];
+    rows = rows.map((row, index) => [numberFrom + index, ...row]);
+    className += ' numbered-table';
+  }
   return '<div class="table-wrap ' + className + '"><table><thead><tr>' + columns.map(s => '<th scope="col">' + esc(s) + '</th>').join('') +
     '</tr></thead><tbody>' + rows.map(row => '<tr>' + row.map((cell, i) =>
       '<td><span class="mobile-label" aria-hidden="true">' + esc(columns[i]) + '</span><div class="cell-value">' + cell + '</div></td>'
     ).join('') + '</tr>').join('') + '</tbody></table></div>';
 }
 
-function salesTable(rows, online, empty = 'Belum ada transaksi.') {
+function salesTable(rows, online, empty = 'Belum ada transaksi.', numberFrom) {
   const columns = [online ? 'Pesanan' : 'Transaksi', 'Barang'];
   if (online) columns.push('Status');
   if (can('admin')) columns.push('Total');
@@ -102,7 +107,7 @@ function salesTable(rows, online, empty = 'Belum ada transaksi.') {
     if (can('admin')) row.push('<span class="sale-total">' + fmt(total(s)) + '</span>');
     row.push(button('Buka', 'sale-detail', s.id));
     return row;
-  }), empty, 'sales-list' + (online ? ' has-status' : '') + (can('admin') ? ' has-total' : ''));
+  }), empty, 'sales-list' + (online ? ' has-status' : '') + (can('admin') ? ' has-total' : ''), numberFrom);
 }
 
 const panel = (title, content) => '<section class="panel"><div class="panel-head"><h2>' + esc(title) + '</h2></div>' + content + '</section>';
@@ -187,7 +192,7 @@ function pageRows() {
       matches(s.order, s.tracking, s.channel, s.buyer, ...s.items.map(label)));
     if (!online) return salesTable(sales, false);
     const page = paginate(sales);
-    return salesTable(page.items, true) + listPagination(page);
+    return salesTable(page.items, true, undefined, page.start + 1) + listPagination(page);
   }
   if (view === 'stock' || view === 'low') {
     const columns = ['Nama barang', 'Varian', 'Tersedia', 'Dipesan', 'Harga toko', 'Harga marketplace', 'Status', 'Aksi'];
@@ -202,7 +207,7 @@ function pageRows() {
       p.stock <= p.reserved ? '<span class="tag stock-empty">Habis</span>' : p.stock - p.reserved <= 3 ? '<span class="tag warn">Menipis</span>' : '<span class="tag good">Tersedia</span>',
       '<div class="row">' + button('Edit', 'product', p.id) + button('Komponen', 'recipe', p.id) + '</div>' + (p.recipe?.length ? '<small>Bisa dirakit: ' + Math.max(0, Math.min(...p.recipe.map(line => { const part = byId(state.products, line.product); return part ? Math.floor((part.stock - part.reserved) / line.qty) : 0; }))) + ' paket</small>' : ''),
     ]);
-    return table(columns, rows, 'Belum ada barang yang sesuai.', 'stock-sheet') + listPagination(page);
+    return table(columns, rows, 'Belum ada barang yang sesuai.', 'stock-sheet', page.start + 1) + listPagination(page);
   }
   if (view === 'suppliers') return table(['Supplier', 'WhatsApp', 'Pembelian', 'Aksi'], (state.suppliers || []).filter(s => matches(s.name, s.phone)).map(s => [
     '<strong>' + esc(s.name) + '</strong>', '+' + esc(s.phone),

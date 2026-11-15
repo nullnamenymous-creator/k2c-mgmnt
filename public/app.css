@@ -161,18 +161,18 @@ dialog::backdrop{background:#0f1d35a6}
 .stock-sheet th{background:#e9eff7;color:#273b56}
 .stock-sheet tbody tr:nth-child(even){background:#f7f9fc}
 .stock-sheet tbody tr:hover{background:#edf3ff}
-.stock-sheet td:first-child{width:27%}
-.stock-sheet td:nth-child(2){width:21%}
-.stock-sheet :is(th,td):nth-child(n+3):nth-child(-n+6){text-align:right;font-variant-numeric:tabular-nums}
-.stock-sheet td:nth-child(n+3):nth-child(-n+6){white-space:nowrap}
-.stock-sheet td:nth-child(3) small{white-space:normal}
+.stock-sheet td:nth-child(2){width:27%}
+.stock-sheet td:nth-child(3){width:21%}
+.stock-sheet :is(th,td):nth-child(n+4):nth-child(-n+7){text-align:right;font-variant-numeric:tabular-nums}
+.stock-sheet td:nth-child(n+4):nth-child(-n+7){white-space:nowrap}
+.stock-sheet td:nth-child(4) small{white-space:normal}
 .stock-sheet td:last-child .button{min-height:32px;padding:5px 10px}
 
 @media(max-width:620px){
   .stock-sheet tbody tr{gap:0;padding:0}
   .stock-sheet tbody td{padding:8px 10px;border-right:0;border-bottom:1px solid var(--line)}
-  .stock-sheet tbody td:nth-child(-n+2){grid-column:1/-1;width:auto}
-  .stock-sheet tbody td:nth-child(odd):nth-child(n+3):nth-child(-n+6){border-right:1px solid var(--line)}
+  .stock-sheet tbody td:nth-child(-n+3){grid-column:1/-1;width:auto}
+  .stock-sheet tbody td:nth-child(even):nth-child(n+4):nth-child(-n+7){border-right:1px solid var(--line)}
   .stock-sheet tbody td:last-child{border-bottom:0}
 }
 
@@ -286,9 +286,9 @@ dialog::backdrop{background:#0f1d35a6}
 :is(.excel-admin,.excel-dialog) th{background:#dceee2;color:#19482f;white-space:normal}
 :is(.excel-admin,.excel-dialog) tbody tr:nth-child(even){background:#f3f8f4}
 :is(.excel-admin,.excel-dialog) tbody tr:hover{background:#e9f4ec}
-.excel-admin .stock-sheet td:first-child{width:24%}
-.excel-admin .stock-sheet td:nth-child(2){width:15%}
-.excel-admin .stock-sheet :is(th,td):nth-child(7){white-space:nowrap}
+.excel-admin .stock-sheet td:nth-child(2){width:24%}
+.excel-admin .stock-sheet td:nth-child(3){width:15%}
+.excel-admin .stock-sheet :is(th,td):nth-child(8){white-space:nowrap}
 .excel-admin .stock-sheet td:last-child .row{flex-wrap:nowrap}
 .excel-admin .stock-empty{background:#fae6e5;color:#922b27}
 @media(min-width:941px){
@@ -303,9 +303,9 @@ dialog::backdrop{background:#0f1d35a6}
   .excel-admin .stock-sheet :is(td,th){display:table-cell}
   .excel-admin .stock-sheet .mobile-label{display:none}
   .excel-admin .stock-sheet th{position:sticky;top:0;z-index:2}
-  .excel-admin .stock-sheet :is(th,td):first-child{position:sticky;left:0;min-width:130px}
-  .excel-admin .stock-sheet td:first-child{z-index:1;background:#f6faf7}
-  .excel-admin .stock-sheet th:first-child{z-index:3}
+  .excel-admin .stock-sheet :is(th,td):nth-child(2){position:sticky;left:0;min-width:130px}
+  .excel-admin .stock-sheet td:nth-child(2){z-index:1;background:#f6faf7}
+  .excel-admin .stock-sheet th:nth-child(2){z-index:3}
 }
 
 .stock-filters{padding:12px;background:#edf5ef;border-bottom:1px solid var(--line)}
@@ -320,3 +320,20 @@ dialog::backdrop{background:#0f1d35a6}
 .list-pagination-controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}
 .list-pagination .button{padding:6px 10px;min-height:34px;white-space:nowrap}
 .list-pagination .button:disabled{opacity:.5;cursor:default}
+
+.excel-admin .numbered-table :is(th,td):first-child{width:50px;text-align:center;white-space:nowrap;font-variant-numeric:tabular-nums}
+.excel-admin .numbered-table td:first-child{color:var(--muted)}
+@media(min-width:941px){
+  .sales-list.numbered-table :is(th,td):nth-child(2){width:24%}
+  .sales-list.has-status.numbered-table :is(th,td):nth-child(3){width:auto}
+  .sales-list.has-status.numbered-table :is(th,td):nth-child(4){width:140px}
+}
+@media(max-width:940px){
+  .excel-admin .sales-list.numbered-table tbody td:first-child{width:auto;text-align:left}
+  .sales-list.numbered-table tbody td:first-child .mobile-label{display:inline;margin-right:4px}
+  .sales-list.numbered-table tbody td:first-child .cell-value{display:inline}
+  .sales-list.numbered-table tbody td:nth-child(2),.sales-list.numbered-table tbody td:nth-child(3){grid-column:1/-1}
+  .sales-list.numbered-table tbody td:nth-child(2) .mobile-label{display:none}
+  .sales-list.has-status.has-total.numbered-table tbody td:nth-child(4){grid-column:1;text-align:left}
+  .sales-list.has-total.numbered-table tbody td:nth-last-child(2){grid-column:2;text-align:right}
+}
