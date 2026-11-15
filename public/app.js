@@ -12,7 +12,7 @@ const byId = (rows, id) => rows.find(row => row.id === id);
 const label = p => p ? p.name + (p.variant ? ' / ' + p.variant : '') : 'Barang';
 const total = sale => sale.items.reduce((sum, item) => sum + item.price * item.qty, 0);
 const modalCost = sale => sale.items.reduce((sum, item) => sum + (item.parts ? item.parts.reduce((cost, part) => cost + part.cost * part.qty, 0) : item.cost * item.qty), 0);
-const brand = '<div class="brand"><img src="/icon.svg" alt=""><div><strong>K2C Management</strong><small>K2C Komputindo</small></div></div>';
+const brand = '<div class="brand"><img src="/icon-192.png" alt=""><div><strong>K2C Management</strong><small>K2C Komputindo</small></div></div>';
 const statuses = ['Pesanan masuk', 'Siap kirim', 'Dikirim', 'Retur diterima', 'Bukti retur lengkap', 'Retur diperiksa', 'Dibatalkan'];
 const menus = { home: 'Ringkasan', online: 'Marketplace', shop: 'Penjualan Toko', documents: 'Dokumen Penjualan', stock: 'Stok Barang', buy: 'Pembelian', finance: 'Laba Rugi', low: 'Stok Menipis', suppliers: 'Supplier' };
 const marketplaces = ['Shopee', 'Tokopedia'];
@@ -395,7 +395,7 @@ function form(title, action, body, id = '', submit = 'Simpan') {
     '<button class="button primary">' + esc(submit) + '</button></div></form>');
 }
 
-function watermarkRecording(video) {
+function watermarkRecording(video, logo) {
   const canvas = document.createElement('canvas');
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
@@ -418,18 +418,22 @@ function watermarkRecording(video) {
   ctx.font = titleFont;
   const titleWidth = ctx.measureText(title).width;
   ctx.font = addressFont;
-  const boxWidth = Math.min(width - inset * 2, Math.ceil(Math.max(titleWidth, ctx.measureText(address).width)) + padding * 2);
+  const logoSize = boxHeight - padding * 2;
+  const textX = inset + logoSize + padding * 2;
+  const boxWidth = Math.min(width - inset * 2, Math.ceil(Math.max(titleWidth, ctx.measureText(address).width)) + logoSize + padding * 3);
+  const textWidth = boxWidth - logoSize - padding * 3;
   let frame;
   function draw() {
     ctx.drawImage(video, 0, 0, width, height);
-    ctx.fillStyle = 'rgba(0, 0, 0, .68)';
+    ctx.fillStyle = 'rgba(11, 28, 52, .86)';
     ctx.fillRect(inset, top, boxWidth, boxHeight);
+    ctx.drawImage(logo, inset + padding, top + padding, logoSize, logoSize);
     ctx.fillStyle = '#fff';
     ctx.textBaseline = 'top';
     ctx.font = titleFont;
-    ctx.fillText(title, inset + padding, top + padding, boxWidth - padding * 2);
+    ctx.fillText(title, textX, top + padding, textWidth);
     ctx.font = addressFont;
-    ctx.fillText(address, inset + padding, top + titleSize + padding * 2, boxWidth - padding * 2);
+    ctx.fillText(address, textX, top + titleSize + padding * 2, textWidth);
   }
   const stream = canvas.captureStream(30);
   function renderFrame() {
@@ -524,7 +528,12 @@ function recordTest(id) {
         if (!closed) setMode('start', 'Mulai rekam', 'Kamera siap.');
         return;
       }
-      watermarked = watermarkRecording(video);
+      control.disabled = true;
+      const logo = new Image();
+      logo.src = '/icon-192.png';
+      await logo.decode();
+      if (closed) return;
+      watermarked = watermarkRecording(video, logo);
       recorder = new MediaRecorder(watermarked.stream, { mimeType, videoBitsPerSecond: 2_000_000 });
       const chunks = [];
       let size = 0;

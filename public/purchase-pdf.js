@@ -1,3 +1,6 @@
+import { brandLogoJpeg } from './brand-logo.js';
+
+const logoImage = Array.from(atob(brandLogoJpeg), byte => byte.charCodeAt(0).toString(16).padStart(2, '0')).join('') + '>';
 const rupiah = new Intl.NumberFormat('id-ID');
 const money = value => 'Rp ' + rupiah.format(value);
 const latin = value => String(value ?? '').replace(/[\u2010-\u2015]/g, '-')
@@ -19,7 +22,8 @@ export function salesPdf({ number, date, buyer, channel, status, items, kind, wa
 function transactionPdf({ number, date, customer, items, title, party, totalLabel, saleInfo, warranty }) {
   const objects = ['', '',
     ...['Helvetica', 'Helvetica-Bold', 'Courier'].map(font =>
-      '<< /Type /Font /Subtype /Type1 /BaseFont /' + font + ' /Encoding /WinAnsiEncoding >>')];
+      '<< /Type /Font /Subtype /Type1 /BaseFont /' + font + ' /Encoding /WinAnsiEncoding >>'),
+    '<< /Type /XObject /Subtype /Image /Width 144 /Height 144 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter [/ASCIIHexDecode /DCTDecode] /Length ' + logoImage.length + ' >>\nstream\n' + logoImage + '\nendstream'];
   const rows = items.flatMap((item, index) => {
     const names = wrap(item.name, warranty ? 42 : 22);
     const chunks = [];
@@ -28,9 +32,9 @@ function transactionPdf({ number, date, customer, items, title, party, totalLabe
     }
     return chunks;
   });
-  const navy = '0.07 0.15 0.27';
+  const navy = '0.04 0.11 0.20';
   const muted = '0.29 0.35 0.44';
-  const blue = '0.12 0.34 0.64';
+  const blue = '0.03 0.36 0.75';
   const pages = [];
   let commands;
   let y;
@@ -46,10 +50,12 @@ function transactionPdf({ number, date, customer, items, title, party, totalLabe
   function startPage() {
     commands = [];
     pages.push(commands);
-    box(40, 796, 515, 3, blue);
-    text('K2C KOMPUTINDO', 40, 765, 20, 'F2');
-    text('KP. RUMBIA PEBAYURAN KAB BEKASI', 40, 746, 9, 'F1', muted);
-    text('081298406844', 40, 731, 9, 'F1', muted);
+    box(40, 796, 436, 3, blue);
+    box(476, 796, 79, 3, '0.14 0.70 0.90');
+    commands.push('q 52 0 0 52 40 728 cm /Logo Do Q');
+    text('K2C KOMPUTINDO', 103, 765, 18, 'F2');
+    text('KP. RUMBIA PEBAYURAN KAB BEKASI', 103, 746, 9, 'F1', muted);
+    text('081298406844', 103, 731, 9, 'F1', muted);
     text(title, 390, 765, 14, 'F2');
     right('No. ' + number, 555, 746, 10);
     box(40, 659, 515, 55, '0.95 0.97 0.99');
@@ -108,7 +114,7 @@ function transactionPdf({ number, date, customer, items, title, party, totalLabe
   const refs = pages.map(pageCommands => {
     const page = objects.length + 1;
     const stream = pageCommands.join('\n');
-    objects.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents ' + (page + 1) + ' 0 R >>',
+    objects.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> /XObject << /Logo 6 0 R >> >> /Contents ' + (page + 1) + ' 0 R >>',
       '<< /Length ' + stream.length + ' >>\nstream\n' + stream + '\nendstream');
     return page + ' 0 R';
   });

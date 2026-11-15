@@ -1,4 +1,4 @@
-:root{font-family:"Geist","Segoe UI",sans-serif;color:#162438;background:#f3f5f8;font-size:14px;--nav:#101e34;--accent:#2456cf;--line:#dce3ed;--muted:#52627a;--white:#fff}
+:root{font-family:"Geist","Segoe UI",sans-serif;color:#162438;background:#f3f5f8;font-size:14px;--nav:#0b1c34;--accent:#075bbf;--line:#dce3ed;--muted:#52627a;--white:#fff}
 *{box-sizing:border-box}
 body{margin:0}
 button,input,select,textarea{font:inherit;border-radius:0}
@@ -12,7 +12,7 @@ h1,h2,h3,p{margin:0}
 .shell{min-height:100vh;display:grid;grid-template-columns:224px minmax(0,1fr)}
 .sidebar{background:var(--nav);color:#fff;padding:24px 16px;display:flex;flex-direction:column;gap:34px}
 .brand{display:flex;align-items:center;gap:12px;color:inherit;padding:0 4px}
-.brand img{width:40px;height:40px}
+.brand img{width:44px;height:44px;flex:none;object-fit:contain;border-radius:50%;background:#fff}
 .brand strong,.brand small{display:block}
 .brand strong{font-size:16px;letter-spacing:.02em}
 .brand small{color:#aebdd2;margin-top:3px}
@@ -274,18 +274,18 @@ dialog::backdrop{background:#0f1d35a6}
 .tech-order[data-market]:has(.tag.good){background:#f0faf4;border-color:#90c9a6;border-left-color:#218a4c}
 
 /* Workbook appearance for Admin. */
-.excel-admin,.excel-dialog{--accent:#16704b;--line:#cdded4;color:#17362a}
-.excel-admin{--nav:#135b40;background:#f4f8f5}
-.excel-admin .sidebar nav .nav-button[aria-current=page]{box-shadow:inset 3px 0 #a8e4bd;background:#206c50}
-.excel-admin .sidebar .nav-button:hover,.excel-admin .sidebar .dark-button{background:#206c50}
-.excel-admin .topbar,.excel-admin .toolbar,.excel-dialog .dialog-head{background:#edf5ef}
-.excel-admin .panel-head{background:#edf5ef}
+.excel-admin,.excel-dialog{--accent:#075bbf;--line:#cbdcec;color:#102a49}
+.excel-admin{--nav:#0b1c34;background:#f1f6fc}
+.excel-admin .sidebar nav .nav-button[aria-current=page]{box-shadow:inset 3px 0 #37c8f4;background:#173b65}
+.excel-admin .sidebar .nav-button:hover,.excel-admin .sidebar .dark-button{background:#173b65}
+.excel-admin .topbar,.excel-admin .toolbar,.excel-dialog .dialog-head{background:#eaf3fc}
+.excel-admin .panel-head{background:#eaf3fc}
 :is(.excel-admin,.excel-dialog) .primary{background:var(--accent);border-color:var(--accent)}
-:is(.excel-admin,.excel-dialog) .primary:hover{background:#105b3d}
+:is(.excel-admin,.excel-dialog) .primary:hover{background:#064897}
 :is(.excel-admin,.excel-dialog) :is(th,td){border:1px solid var(--line);padding:7px 10px}
-:is(.excel-admin,.excel-dialog) th{background:#dceee2;color:#19482f;white-space:normal}
-:is(.excel-admin,.excel-dialog) tbody tr:nth-child(even){background:#f3f8f4}
-:is(.excel-admin,.excel-dialog) tbody tr:hover{background:#e9f4ec}
+:is(.excel-admin,.excel-dialog) th{background:#d9e9fa;color:#173c64;white-space:normal}
+:is(.excel-admin,.excel-dialog) tbody tr:nth-child(even){background:#f4f8fe}
+:is(.excel-admin,.excel-dialog) tbody tr:hover{background:#e7f2fd}
 .excel-admin .stock-sheet td:nth-child(2){width:22%}
 .excel-admin .stock-sheet td:nth-child(3){width:15%}
 .excel-admin .stock-sheet :is(th,td):nth-child(8){white-space:nowrap}
@@ -306,15 +306,15 @@ dialog::backdrop{background:#0f1d35a6}
   .excel-admin .stock-sheet .mobile-label{display:none}
   .excel-admin .stock-sheet th{position:sticky;top:0;z-index:2}
   .excel-admin .stock-sheet :is(th,td):nth-child(2){position:sticky;left:0;min-width:130px}
-  .excel-admin .stock-sheet td:nth-child(2){z-index:1;background:#f6faf7}
+  .excel-admin .stock-sheet td:nth-child(2){z-index:1;background:#f5f9ff}
   .excel-admin .stock-sheet th:nth-child(2){z-index:3}
 }
 
-.stock-filters{padding:12px;background:#edf5ef;border-bottom:1px solid var(--line)}
+.stock-filters{padding:12px;background:#eaf3fc;border-bottom:1px solid var(--line)}
 .stock-filter-main,.stock-filter-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,145px),1fr));gap:8px;align-items:end}
 .stock-filter-extra{margin-top:8px}.stock-filter-extra summary{padding:4px 0}.stock-filter-grid{margin-top:8px}.stock-filter-grid fieldset{min-width:0}
 
-.finance-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:12px;padding:12px;background:#edf5ef}
+.finance-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:12px;padding:12px;background:#eaf3fc}
 .finance-note{padding:10px 12px;color:var(--muted)}
 .finance-note p{margin:5px 0}
 
@@ -351,6 +351,6 @@ dialog::backdrop{background:#0f1d35a6}
 .excel-admin .sales-list tbody tr:has(.shipped-order):hover{background:#e0f1e3}
 .excel-admin .sales-list .shipped-order{background:#c9e9cf;color:#174b2a;font-weight:700}
 
-.document-meta{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 16px;background:#edf5ef;padding:12px;margin-bottom:14px}
+.document-meta{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 16px;background:#eaf3fc;padding:12px;margin-bottom:14px}
 .document-sales :is(th,td):last-child .button{white-space:nowrap;overflow-wrap:normal}
 .document-warranty[hidden]{display:none}
