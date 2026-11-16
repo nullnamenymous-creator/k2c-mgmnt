@@ -242,7 +242,7 @@ function pageRows() {
     '<strong>' + esc(purchaseItemLabel(purchaseItems(p)[0])) + '</strong><small>' +
       (purchaseItems(p).length > 1 ? '+' + (purchaseItems(p).length - 1) + ' baris barang · ' : '') + esc(p.supplier + ' · ' + date(p.at)) + '</small>',
     purchaseItems(p).reduce((sum, item) => sum + item.qty, 0) + ' unit', fmt(purchaseTotal(p)),
-    button('Detail', 'purchase-detail', p.id),
+    '<div class="row">' + button('Detail', 'purchase-detail', p.id) + (can('admin') ? button('Edit', 'purchase-edit', p.id) : '') + '</div>',
   ]), 'Belum ada pembelian.');
 }
 
@@ -391,7 +391,7 @@ function open(title, body) {
 
 function form(title, action, body, id = '', submit = 'Simpan') {
   open(title, '<form data-submit="' + action + '" data-id="' + esc(id) + '">' + body +
-    '<p class="error" role="alert"></p><div class="actions">' + (id && !['product', 'supplier', 'recipe', 'build-stock', 'expense'].includes(action) ? button('Kembali', action === 'product-delete' ? 'product' : ['receive', 'purchase-delete'].includes(action) ? 'purchase-detail' : 'sale-detail', id) : '') +
+    '<p class="error" role="alert"></p><div class="actions">' + (id && !['product', 'supplier', 'recipe', 'build-stock', 'expense'].includes(action) ? button('Kembali', action === 'product-delete' ? 'product' : ['receive', 'purchase-delete', 'purchase-edit'].includes(action) ? 'purchase-detail' : 'sale-detail', id) : '') +
     '<button class="button primary">' + esc(submit) + '</button></div></form>');
 }
 
@@ -625,8 +625,10 @@ function productNameValue(container, name) {
   return selected === customProductName ? container.querySelector('[name=' + name + 'Custom]').value.trim() : selected;
 }
 
-function transactionProductSelect() {
-  return select('product', 'Barang / Varian', [...options(), ['new', '+ Buat produk baru']], activeProducts().length ? '' : 'new');
+function transactionProductSelect(item) {
+  const choices = options();
+  if (item && !choices.some(([id]) => id === item.product)) choices.push([item.product, purchaseItemLabel(item)]);
+  return select('product', 'Barang / Varian', [...choices, ['new', '+ Buat produk baru']], item?.product ?? (activeProducts().length ? '' : 'new'));
 }
 
 function saleProductPicker() {
@@ -673,8 +675,8 @@ const assemblyCapacity = product => Math.min(...product.recipe.map(line => {
   return part ? Math.floor(availableStock(part) / line.qty) : 0;
 }));
 
-function newProductFields(sale) {
-  return '<fieldset class="new-product"' + (activeProducts().length ? ' hidden disabled' : '') + '><legend>Produk baru</legend>' +
+function newProductFields(sale, hidden = Boolean(activeProducts().length)) {
+  return '<fieldset class="new-product"' + (hidden ? ' hidden disabled' : '') + '><legend>Produk baru</legend>' +
     '<div class="grid">' + productNameField('newName') + field('newVariant', 'Varian') +
     categoryField('newCategory') +
     (sale ? amount('newStock', 'Stok fisik sebelum dijual', '', 1) + amount('newCost', 'Modal per unit (opsional)', '', 0, false) :
@@ -690,12 +692,14 @@ function newProductFrom(container) {
     initialStock: value('newStock'), initialCost: value('newCost') };
 }
 
-function purchaseLine() {
-  return '<tbody class="purchase-item"><tr class="purchase-entry"><td>' + transactionProductSelect() + '</td><td>' +
-    amount('qty', 'Jumlah', 1, 1) + '</td><td>' + amount('cost', 'Harga beli per unit') +
-    '</td><td class="purchase-subtotal">—</td><td>' + button('Hapus', 'line-remove') +
-    '</td></tr><tr class="purchase-new"' + (activeProducts().length ? ' hidden' : '') +
-    '><td colspan="5">' + newProductFields(false) + '</td></tr></tbody>';
+function purchaseLine(item, index = '') {
+  const existing = Boolean(item || activeProducts().length);
+  return '<tbody class="purchase-item"><tr class="purchase-entry"><td>' + transactionProductSelect(item) +
+    '<input type="hidden" name="original" value="' + esc(index) + '"></td><td>' +
+    amount('qty', 'Jumlah', item?.qty ?? 1, 1) + '</td><td>' + amount('cost', 'Harga beli per unit', item?.cost) +
+    '</td><td class="purchase-subtotal">' + (item ? fmt(item.qty * item.cost) : '-') + '</td><td>' + button('Hapus', 'line-remove') +
+    '</td></tr><tr class="purchase-new"' + (existing ? ' hidden' : '') +
+    '><td colspan="5">' + newProductFields(false, existing) + '</td></tr></tbody>';
 }
 
 function recipeLine(id, line = {}) {
@@ -796,7 +800,7 @@ function purchaseDetail(id) {
     table(['Barang', 'Jumlah', 'Harga beli', 'Subtotal'], purchaseItems(purchase).map(item => [
       esc(purchaseItemLabel(item)), item.qty, fmt(item.cost), fmt(item.qty * item.cost),
     ]), 'Belum ada barang.') + (purchaseItems(purchase).some(item => item.received < item.qty) ? '<p>Transaksi lama · ' + purchaseItems(purchase).reduce((sum, item) => sum + item.qty - item.received, 0) + ' unit belum tercatat masuk stok.</p>' : '') + '<p><strong>Total ' + fmt(purchaseTotal(purchase)) + '</strong></p><div class="actions">' +
-    button('Hapus pembelian', 'purchase-delete', id) + button('Unduh nota PDF', 'purchase-pdf', id, 'primary') + '</div></div>');
+    (can('admin') ? button('Edit pembelian', 'purchase-edit', id) : '') + button('Hapus pembelian', 'purchase-delete', id) + button('Unduh nota PDF', 'purchase-pdf', id, 'primary') + '</div></div>');
 }
 
 async function click(action, key, element) {
@@ -933,7 +937,7 @@ async function click(action, key, element) {
     return;
   }
   if (action === 'line-add') {
-    dialog.querySelector('#lines').insertAdjacentHTML('beforeend', dialog.querySelector('form').dataset.submit === 'purchase' ? purchaseLine() : line());
+    dialog.querySelector('#lines').insertAdjacentHTML('beforeend', ['purchase', 'purchase-edit'].includes(dialog.querySelector('form').dataset.submit) ? purchaseLine() : line());
     dialog.querySelector('#lines').lastElementChild.querySelector('summary, select[name=product]').focus();
     return;
   }
@@ -988,14 +992,20 @@ async function click(action, key, element) {
       categoryField('category', p?.category) +
       '<div class="grid">' + amount('retail', 'Harga toko', p?.retail) + amount('market', 'Harga marketplace', p?.market) + '</div>' + (p ? amount('cost', 'Harga modal per unit', p.cost ?? 0) : '') + initial + (p ? '<div>' + button('Hapus barang', 'product-delete', p.id) + '</div>' : ''), key);
   }
-  if (action === 'purchase') {
+  if (action === 'purchase' || action === 'purchase-edit') {
+    if (!can('admin')) return;
+    const purchase = action === 'purchase-edit' ? byId(state.purchases, key) : undefined;
     const suppliers = state.suppliers || [];
-    if (!suppliers.length) return form('Tambah supplier untuk pembelian', 'supplier',
+    if (!purchase && !suppliers.length) return form('Tambah supplier untuk pembelian', 'supplier',
       '<input type="hidden" name="continuePurchase" value="yes">' +
       field('name', 'Nama supplier', '', 'text', 'required') +
       field('phone', 'Nomor WhatsApp', '', 'tel', 'required placeholder="081234567890"'), '', 'Simpan & lanjut pembelian');
-    return form('Catat pembelian', 'purchase', select('supplier', 'Supplier', [['', 'Pilih supplier'], ...suppliers.map(s => [s.id, s.name])]) +
-      '<div class="purchase-sheet"><table id="lines"><thead><tr><th scope="col">Barang / Varian</th><th scope="col">Jumlah</th><th scope="col">Harga beli per unit</th><th scope="col">Subtotal</th><th scope="col">Aksi</th></tr></thead>' + purchaseLine() + '</table></div><div>' + button('Tambah barang', 'line-add') + '</div>');
+    const choices = [['', 'Pilih supplier'], ...suppliers.map(s => [s.id, s.name])];
+    const original = purchase && (suppliers.some(s => s.id === purchase.supplierId) ? purchase.supplierId : '__original_supplier__');
+    if (original === '__original_supplier__') choices.push([original, purchase.supplier]);
+    const revision = purchase ? '<input type="hidden" name="revision" value="' + esc(purchase.revision ?? 0) + '">' : '';
+    return form(purchase ? 'Edit pembelian' : 'Catat pembelian', action, revision + select('supplier', 'Supplier', choices, original) +
+      '<div class="purchase-sheet"><table id="lines"><thead><tr><th scope="col">Barang / Varian</th><th scope="col">Jumlah</th><th scope="col">Harga beli per unit</th><th scope="col">Subtotal</th><th scope="col">Aksi</th></tr></thead>' + (purchase ? purchaseItems(purchase).map(purchaseLine).join('') : purchaseLine()) + '</table></div><div>' + button('Tambah barang', 'line-add') + '</div>', key);
   }
   if (action === 'component-swap') {
     const [id, index, partIndex] = key.split(':');
@@ -1182,7 +1192,8 @@ document.addEventListener('submit', async event => {
       if (!id) values.name = productNameValue(form, 'name');
       values.category = categoryValue(form, 'category');
     }
-    if (action === 'purchase') values.items = Array.from(form.querySelectorAll('.purchase-item'), row => ({
+    if (['purchase', 'purchase-edit'].includes(action)) values.items = Array.from(form.querySelectorAll('.purchase-item'), row => ({
+      original: row.querySelector('[name=original]').value,
       product: row.querySelector('[name=product]').value, newProduct: newProductFrom(row),
       qty: row.querySelector('[name=qty]').value, cost: row.querySelector('[name=cost]').value,
     }));
@@ -1230,7 +1241,7 @@ document.addEventListener('submit', async event => {
     await refresh();
     if (action === 'supplier' && values.continuePurchase === 'yes') await click('purchase', '');
     else if (action === 'purchase') purchaseDetail(body.purchaseId);
-    else if (action === 'receive') purchaseDetail(id);
+    else if (action === 'receive' || action === 'purchase-edit') purchaseDetail(id);
     else if (id && !['product', 'product-delete', 'supplier', 'purchase-delete', 'recipe', 'build-stock', 'expense'].includes(action)) saleDetail(id);
   } catch (error) {
     if (error.status === 401) chooseRole(error.message);

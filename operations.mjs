@@ -180,6 +180,45 @@ export function apply(state, action, input, user, files = []) {
     state.purchases.unshift(purchase);
     return apply(state, 'receive', { id: purchase.id, quantities: items.map(item => item.qty) }, user);
   }
+  if (action === 'purchase-edit') {
+    allow('admin');
+    const purchase = find(state.purchases, input.id);
+    const revision = purchase.revision ?? 0;
+    if (input.revision !== String(revision)) fail('Pembelian sudah berubah. Muat ulang lalu buka kembali form edit.', 409);
+    const oldItems = purchase.items ?? [purchase];
+    const supplier = input.supplier === '__original_supplier__' ? null : find(state.suppliers ?? [], input.supplier);
+    if (!Array.isArray(input.items) || !input.items.length) fail('Tambahkan barang pembelian.');
+    const used = new Set();
+    const items = input.items.map(line => {
+      let previous;
+      if (line.original !== undefined && line.original !== '') {
+        const index = number(line.original, 'Baris pembelian');
+        previous = oldItems[index];
+        if (!previous || used.has(index)) fail('Baris pembelian tidak valid.');
+        used.add(index);
+      }
+      const qty = number(line.qty, 'Jumlah', 1);
+      const cost = number(line.cost, 'Harga beli');
+      const received = previous ? Math.min(qty, (previous.received ?? 0) + Math.max(0, qty - previous.qty)) : qty;
+      const product = previous && previous.product === line.product ? find(state.products, line.product) : transactionProduct(line);
+      if (product.archivedAt && received > (previous?.received ?? 0)) fail('Aktifkan kembali barang sebelum menambah jumlah pembelian.');
+      const itemLabel = (previous?.product === product.id && previous.itemLabel) || [product.name, product.variant].filter(Boolean).join(' / ');
+      return { product: product.id, itemLabel, qty, cost, received };
+    });
+    const changes = new Map();
+    for (const item of oldItems) changes.set(item.product, (changes.get(item.product) ?? 0) - (item.received ?? 0));
+    for (const item of items) changes.set(item.product, (changes.get(item.product) ?? 0) + item.received);
+    for (const [product, qty] of changes) {
+      const current = find(state.products, product);
+      if (qty < 0 && free(state, current) < -qty) fail('Stok tersedia tidak cukup untuk revisi ' + current.name + '. Periksa barang yang sudah terjual atau dipesan.');
+    }
+    for (const [product, qty] of changes) {
+      if (qty) move(product, qty, 'Revisi pembelian', purchase.id);
+    }
+    Object.assign(purchase, { items, revision: revision + 1 });
+    if (supplier) Object.assign(purchase, { supplier: supplier.name, supplierId: supplier.id, supplierPhone: supplier.phone });
+    return purchase;
+  }
   if (action === 'receive' || action === 'purchase-delete') {
     allow('admin');
     const purchase = find(state.purchases, input.id);
@@ -211,6 +250,7 @@ export function apply(state, action, input, user, files = []) {
       item.received += qty;
       purchase.receipts.push({ qty, itemLabel: item.itemLabel, at, actor });
     });
+    purchase.revision = (purchase.revision ?? 0) + 1;
     return purchase;
   }
   if (action === 'sale') {
