@@ -354,3 +354,16 @@ dialog::backdrop{background:#0f1d35a6}
 .document-meta{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 16px;background:#eaf3fc;padding:12px;margin-bottom:14px}
 .document-sales :is(th,td):last-child .button{white-space:nowrap;overflow-wrap:normal}
 .document-warranty[hidden]{display:none}
+
+.sale-picker{border:1px solid var(--line);background:#fff}
+.sale-picker summary{padding:10px 12px;color:#173c64;overflow-wrap:anywhere}
+.picker-label{font-size:12px;margin-right:8px;color:var(--muted)}
+.picker-body{display:grid;gap:8px;padding:10px 12px;border-top:1px solid var(--line);background:#f4f8fe}
+.picker-results{display:grid;max-height:17rem;overflow:auto;overscroll-behavior:contain}
+.picker-product{display:flex;justify-content:space-between;gap:12px;padding:8px 10px;border:0;border-bottom:1px solid var(--line);background:#fff;text-align:left;color:inherit}
+.picker-product>span{min-width:0;overflow-wrap:anywhere}
+.picker-product>span>*{display:block}
+.picker-product>strong{white-space:nowrap}
+.picker-product small{color:var(--muted);margin-top:2px}
+.picker-product:hover,.picker-product[aria-pressed=true]{background:#e0efff}
+.picker-actions{display:flex;gap:8px;flex-wrap:wrap}

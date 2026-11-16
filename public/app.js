@@ -216,7 +216,7 @@ function pageRows() {
       fmt(p.retail),
       fmt(p.market),
       p.stock <= p.reserved ? '<span class="tag stock-empty">Habis</span>' : p.stock - p.reserved <= 3 ? '<span class="tag warn">Menipis</span>' : '<span class="tag good">Tersedia</span>',
-      '<div class="row">' + button('Edit', 'product', p.id) + button('Komponen', 'recipe', p.id) + '</div>' + (p.recipe?.length ? '<small>Bisa dirakit: ' + Math.max(0, Math.min(...p.recipe.map(line => { const part = byId(state.products, line.product); return part ? Math.floor((part.stock - part.reserved) / line.qty) : 0; }))) + ' paket</small>' : ''),
+      '<div class="row">' + button('Edit', 'product', p.id) + button('Komponen', 'recipe', p.id) + '</div>' + (p.recipe?.length ? '<small>Bisa dirakit: ' + assemblyCapacity(p) + ' paket</small>' : ''),
     ]);
     return table(columns, rows, 'Belum ada barang yang sesuai.', 'stock-sheet', page.start + 1) + listPagination(page);
   }
@@ -629,9 +629,49 @@ function transactionProductSelect() {
   return select('product', 'Barang / Varian', [...options(), ['new', '+ Buat produk baru']], activeProducts().length ? '' : 'new');
 }
 
-function transactionProduct(sale = false) {
-  return transactionProductSelect() + newProductFields(sale);
+function saleProductPicker() {
+  const products = activeProducts();
+  const categories = [...new Set(products.map(p => p.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'id'));
+  return '<input type="hidden" name="product" value="' + (products.length ? '' : 'new') + '">' +
+    '<details class="sale-picker"><summary><span class="picker-label">Barang / Varian</span><strong data-picker-choice>' +
+    (products.length ? 'Pilih barang' : 'Produk baru') + '</strong></summary>' +
+    '<div class="picker-body"><div class="grid"><label>Cari barang<input type="search" data-picker-query autocomplete="off" placeholder="Contoh: i5 8GB 240GB"></label>' +
+    select('pickerCategory', 'Kategori', [['', 'Semua kategori'], ...categories.map(category => [category, category])]).replace(' required>', '>') + '</div>' +
+    '<p class="muted" role="status" data-picker-count></p><div class="picker-results" data-picker-results></div>' +
+    '<div class="picker-actions"><button type="button" class="button" data-action="picker-more" hidden>Tampilkan lagi</button>' +
+    button('+ Buat produk baru', 'picker-select', 'new') + '</div></div></details>';
 }
+
+const pickerSearchText = text => String(text ?? '').normalize('NFKC').toLocaleLowerCase('id').replace(/(\d)\s+(?=(?:gb|tb|mb)\b)/g, '$1');
+
+function pickerResults(picker, limit = 20) {
+  picker.dataset.limit = limit;
+  const query = pickerSearchText(picker.querySelector('[data-picker-query]').value).trim();
+  const terms = query ? query.split(/\s+/) : [];
+  const category = picker.querySelector('[name=pickerCategory]').value;
+  const online = picker.closest('form').elements.channel.value !== 'Toko';
+  const products = activeProducts().filter(product => (!category || product.category === category) &&
+    terms.every(term => pickerSearchText([product.name, product.variant].join(' ')).includes(term)));
+  const chosen = picker.closest('.line-item').querySelector('[name=product]').value;
+  picker.querySelector('[data-picker-count]').textContent = products.length ?
+    'Menampilkan ' + Math.min(products.length, limit) + ' dari ' + products.length + ' barang' : 'Barang tidak ditemukan.';
+  picker.querySelector('[data-action=picker-more]').hidden = products.length <= limit;
+  picker.querySelector('[data-picker-results]').innerHTML = products.slice(0, limit).map(product => {
+    const stock = availableStock(product);
+    const capacity = online && product.recipe?.length ? ' &middot; Bisa dirakit: ' + assemblyCapacity(product) : '';
+    return '<button type="button" class="picker-product" data-action="picker-select" data-key="' + esc(product.id) +
+      '" aria-pressed="' + (product.id === chosen) + '"><span><strong>' + esc(product.name) + '</strong>' +
+      (product.variant ? '<span>' + esc(product.variant) + '</span>' : '') +
+      '<small>' + (capacity ? 'Stok siap jual: ' : 'Stok tersedia: ') + stock + capacity + '</small></span>' +
+      '<strong>' + fmt(online ? product.market : product.retail) + '</strong></button>';
+  }).join('');
+}
+
+const availableStock = product => Math.max(0, product.stock - product.reserved);
+const assemblyCapacity = product => Math.min(...product.recipe.map(line => {
+  const part = byId(state.products, line.product);
+  return part ? Math.floor(availableStock(part) / line.qty) : 0;
+}));
 
 function newProductFields(sale) {
   return '<fieldset class="new-product"' + (activeProducts().length ? ' hidden disabled' : '') + '><legend>Produk baru</legend>' +
@@ -665,7 +705,7 @@ function recipeLine(id, line = {}) {
 }
 
 function line() {
-  return '<div class="line-item">' + transactionProduct(true) + '<div class="grid">' +
+  return '<div class="line-item">' + saleProductPicker() + newProductFields(true) + '<div class="grid">' +
     amount('qty', 'Jumlah', 1, 1) + amount('price', 'Harga jual per unit') + '</div>' +
     '<label class="check ready-stock" hidden><input name="readyStock" type="checkbox">Ambil dari stok paket siap jual</label>' +
     '<label class="check assembly" hidden><input name="assemble" type="checkbox">Rakit untuk pesanan ini</label>' +
@@ -872,9 +912,29 @@ async function click(action, key, element) {
       fmt(purchaseTotal(purchase)), button('Lihat nota', 'purchase-detail', purchase.id),
     ]), 'Belum ada pembelian yang terhubung ke supplier ini.'));
   }
+  if (action === 'picker-more') {
+    const picker = element.closest('.sale-picker');
+    const limit = Number(picker.dataset.limit);
+    pickerResults(picker, limit + 20);
+    picker.querySelectorAll('.picker-product')[limit]?.focus();
+    return;
+  }
+  if (action === 'picker-select') {
+    const picker = element.closest('.sale-picker');
+    const input = picker.closest('.line-item').querySelector('[name=product]');
+    const selection = byId(state.products, key);
+    picker.querySelector('[data-picker-choice]').textContent = selection ? label(selection) : 'Produk baru';
+    picker.open = false;
+    picker.querySelector('summary').focus();
+    if (input.value !== key) {
+      input.value = key;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    return;
+  }
   if (action === 'line-add') {
     dialog.querySelector('#lines').insertAdjacentHTML('beforeend', dialog.querySelector('form').dataset.submit === 'purchase' ? purchaseLine() : line());
-    dialog.querySelector('#lines').lastElementChild.querySelector('[name=product]').focus();
+    dialog.querySelector('#lines').lastElementChild.querySelector('summary, select[name=product]').focus();
     return;
   }
   if (action === 'line-remove') {
@@ -1001,8 +1061,23 @@ document.addEventListener('click', event => {
   click(el.dataset.action, el.dataset.key, el).catch(error => error.status === 401 ? chooseRole(error.message) : notify(error.message));
 });
 
+dialog.addEventListener('toggle', event => {
+  const picker = event.target;
+  if (!picker.matches('.sale-picker[open]')) return;
+  dialog.querySelectorAll('.sale-picker[open]').forEach(other => { if (other !== picker) other.open = false; });
+  pickerResults(picker);
+  picker.querySelector('[data-picker-query]').focus();
+}, true);
+
+dialog.addEventListener('keydown', event => {
+  if (!event.target.matches('[data-picker-query]') || event.key !== 'Enter' || event.isComposing) return;
+  event.preventDefault();
+  event.target.closest('.sale-picker').querySelector('.picker-product')?.click();
+});
+
 document.addEventListener('input', event => {
   const target = event.target;
+  if (target.matches('[data-picker-query]')) return pickerResults(target.closest('.sale-picker'));
   if (target.name && target.closest('.stock-filters') && target.id !== 'search') {
     if (target.type === 'number' && !target.validity.valid) return;
     (stockFilters[view] ??= {})[target.name] = target.value;
@@ -1055,6 +1130,7 @@ document.addEventListener('change', event => {
     listPage = 1;
     document.querySelector('#rows').innerHTML = pageRows();
   }
+  if (target.name === 'pickerCategory') return pickerResults(target.closest('.sale-picker'));
   if (target.name === 'product') {
     const fieldset = (target.closest('.line-item, .purchase-item') || target.form).querySelector('.new-product');
     if (fieldset) {
@@ -1091,6 +1167,9 @@ document.addEventListener('submit', async event => {
     const action = form.dataset.submit;
     const id = form.dataset.id;
     if (id) values.id = id;
+    if (action === 'sale' && form.querySelector('.line-item [name=product][value=""]')) {
+      throw new Error('Pilih barang di setiap baris pesanan.');
+    }
     if (action === 'sale') values.items = Array.from(form.querySelectorAll('.line-item'), row => ({
       product: row.querySelector('[name=product]').value,
       newProduct: newProductFrom(row),
