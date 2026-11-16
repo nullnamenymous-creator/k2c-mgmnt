@@ -979,14 +979,14 @@ async function click(action, key, element) {
     const p = byId(state.products, key);
     const canSetInitial = !p || (!p.stock && !p.reserved && !state.movements.some(m => m.product === p.id));
     const initial = canSetInitial ? '<fieldset><legend>Stok awal (opsional)</legend><div class="grid">' +
-      amount('initialStock', 'Jumlah yang sudah ada', '', 0, false) + amount('initialCost', 'Modal per unit', '', 0, false) + '</div></fieldset>' : '';
+      amount('initialStock', 'Jumlah yang sudah ada', '', 0, false) + (p ? '' : amount('initialCost', 'Modal per unit', '', 0, false)) + '</div></fieldset>' : '';
     const nameField = p ? field('name', 'Nama barang', p.name, 'text', 'required autocomplete="off" list="product-name-options"') +
       '<datalist id="product-name-options">' + productNameChoices().map(name => '<option value="' + esc(name) + '"></option>').join('') + '</datalist>' :
       productNameField('name');
     return form(p ? 'Edit barang' : 'Tambah barang', 'product', nameField +
       field('variant', 'Varian', p?.variant) +
       categoryField('category', p?.category) +
-      '<div class="grid">' + amount('retail', 'Harga toko', p?.retail) + amount('market', 'Harga marketplace', p?.market) + '</div>' + initial + (p ? '<div>' + button('Hapus barang', 'product-delete', p.id) + '</div>' : ''), key);
+      '<div class="grid">' + amount('retail', 'Harga toko', p?.retail) + amount('market', 'Harga marketplace', p?.market) + '</div>' + (p ? amount('cost', 'Harga modal per unit', p.cost ?? 0) : '') + initial + (p ? '<div>' + button('Hapus barang', 'product-delete', p.id) + '</div>' : ''), key);
   }
   if (action === 'purchase') {
     const suppliers = state.suppliers || [];

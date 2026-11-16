@@ -126,17 +126,17 @@ export function apply(state, action, input, user, files = []) {
     if (state.products.some(row => !row.archivedAt && row.id !== p.id && productKey(row.name) === productKey(name) && productKey(row.variant) === productKey(variant))) {
       fail('Nama barang dan varian ini sudah ada. Pilih barang yang sudah tercatat.');
     }
-    Object.assign(p, { name, variant, category: required(input.category, 'Kategori'), retail: number(input.retail, 'Harga toko'), market: number(input.market, 'Harga marketplace') });
+    const qty = input.initialStock === undefined || input.initialStock === '' ? 0 : number(input.initialStock, 'Stok awal');
+    if (qty && (p.stock || state.movements.some(m => m.product === p.id) || reserved(state, p.id))) {
+      fail('Stok awal sudah tercatat. Gunakan Pembelian untuk barang masuk.');
+    }
+    let cost = p.cost;
+    if (input.id && input.cost !== undefined) cost = number(input.cost, 'Harga modal per unit');
+    else if (qty && (!input.id || input.initialCost !== undefined)) cost = number(input.initialCost || 0, 'Modal per unit');
+    Object.assign(p, { name, variant, category: required(input.category, 'Kategori'), retail: number(input.retail, 'Harga toko'), market: number(input.market, 'Harga marketplace'), cost });
     if (archived) delete p.archivedAt;
     else if (!input.id) state.products.push(p);
-    if (input.initialStock !== undefined && input.initialStock !== '') {
-      const qty = number(input.initialStock, 'Stok awal');
-      if (qty) {
-        if (p.stock || state.movements.some(m => m.product === p.id) || reserved(state, p.id)) fail('Stok awal sudah tercatat. Gunakan Pembelian untuk barang masuk.');
-        p.cost = number(input.initialCost || 0, 'Modal per unit');
-        move(p.id, qty, 'Stok awal', null);
-      }
-    }
+    if (qty) move(p.id, qty, 'Stok awal', null);
     return p;
   }
   if (action === 'adjust') {
