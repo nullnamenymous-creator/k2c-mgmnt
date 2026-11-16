@@ -397,8 +397,9 @@ function form(title, action, body, id = '', submit = 'Simpan') {
 
 function watermarkRecording(video, logo) {
   const canvas = document.createElement('canvas');
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+  const resolution = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
+  canvas.width = Math.floor(video.videoWidth * resolution / 2) * 2;
+  canvas.height = Math.floor(video.videoHeight * resolution / 2) * 2;
   const ctx = canvas.getContext('2d', { alpha: false });
   if (!ctx || !canvas.captureStream || !canvas.width || !canvas.height) {
     throw new Error('Browser ini belum mendukung rekaman dengan watermark.');
@@ -427,7 +428,7 @@ function watermarkRecording(video, logo) {
     ctx.drawImage(video, 0, 0, width, height);
     ctx.fillStyle = 'rgba(11, 28, 52, .86)';
     ctx.fillRect(inset, top, boxWidth, boxHeight);
-    ctx.drawImage(logo, inset + padding, top + padding, logoSize, logoSize);
+    if (logo.complete && logo.naturalWidth) ctx.drawImage(logo, inset + padding, top + padding, logoSize, logoSize);
     ctx.fillStyle = '#fff';
     ctx.textBaseline = 'top';
     ctx.font = titleFont;
@@ -435,7 +436,8 @@ function watermarkRecording(video, logo) {
     ctx.font = addressFont;
     ctx.fillText(address, textX, top + titleSize + padding * 2, textWidth);
   }
-  const stream = canvas.captureStream(30);
+  draw();
+  const stream = canvas.captureStream(24);
   function renderFrame() {
     draw();
     frame = requestAnimationFrame(renderFrame);
@@ -447,10 +449,41 @@ function watermarkRecording(video, logo) {
   } };
 }
 
+async function qcMp4(blob, maxSize) {
+  if (blob.size >= maxSize) throw new Error('Ukuran video melebihi batas. Rekam ulang dengan durasi lebih pendek.');
+  const header = new Uint8Array(await blob.slice(0, 16).arrayBuffer());
+  const type = String.fromCharCode(...header.slice(4, 8));
+  const brand = String.fromCharCode(...header.slice(8, 12));
+  const boxSize = header.length === 16 ? new DataView(header.buffer).getUint32(0) : 0;
+  if (type !== 'ftyp' || brand === 'qt  ' || boxSize < 16 || boxSize > blob.size) {
+    throw new Error('Video harus MP4. Jika kamera menghasilkan MOV atau WebM, pilih file versi MP4.');
+  }
+  return new File([blob], 'video-tes.mp4', { type: 'video/mp4' });
+}
+
+function startQcRecorder(stream, handlers) {
+  const mimeTypes = ['video/mp4', 'video/mp4;codecs=avc1.42001f', 'video/mp4;codecs=avc1'];
+  for (const mimeType of mimeTypes) {
+    if (!globalThis.MediaRecorder?.isTypeSupported(mimeType)) continue;
+    try {
+      const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 1_600_000 });
+      Object.assign(recorder, handlers);
+      recorder.start(1000);
+      return recorder;
+    } catch (error) {
+      if (!['NotSupportedError', 'TypeError', 'UnknownError'].includes(error.name)) throw error;
+    }
+  }
+  throw new Error('Browser ini belum bisa merekam MP4 dengan watermark. Gunakan pilihan Kamera HP / pilih MP4.');
+}
+
 function recordTest(id) {
-  form('Rekam video tes', 'ready', '<div class="camera"><video playsinline hidden aria-label="Pratinjau video tes"></video>' +
+  form('Rekam video tes', 'ready', '<div class="camera"><video playsinline muted hidden aria-label="Pratinjau video tes"></video>' +
     '<p class="muted" role="status">Buka kamera untuk merekam video MP4.</p><div class="row">' +
-    '<button type="button" class="button" data-camera>Buka kamera</button></div></div>', id, 'Simpan & tandai siap kirim');
+    '<button type="button" class="button" data-camera>Buka kamera</button>' +
+    '<button type="button" class="button" data-camera-native>Kamera HP / pilih MP4</button>' +
+    '<input type="file" accept="video/*" capture="environment" data-camera-file hidden></div>' +
+    '<small class="muted">Pilihan Kamera HP memakai file asli tanpa watermark otomatis.</small></div>', id, 'Simpan & tandai siap kirim');
   const formElement = dialog.querySelector('form');
   const video = formElement.querySelector('video');
   const status = formElement.querySelector('[role=status]');
@@ -458,7 +491,10 @@ function recordTest(id) {
   const save = formElement.querySelector('button:not([type=button])');
   let stream;
   let watermarked;
-  let mimeType;
+  const nativeButton = formElement.querySelector('[data-camera-native]');
+  const nativeInput = formElement.querySelector('[data-camera-file]');
+  const logo = new Image();
+  logo.src = '/icon-192.png';
   let recorder;
   let preview;
   let closed = false;
@@ -490,6 +526,7 @@ function recordTest(id) {
     mode = next;
     control.textContent = title;
     control.disabled = false;
+    nativeButton.disabled = next === 'recording';
     status.textContent = message;
   }
 
@@ -501,6 +538,43 @@ function recordTest(id) {
     releaseCamera = undefined;
   };
 
+  async function showRecording(blob, message) {
+    const file = await qcMp4(blob, maxSize);
+    if (closed) return;
+    resetPreview();
+    formElement.recordedVideo = file;
+    preview = URL.createObjectURL(file);
+    video.src = preview;
+    video.controls = true;
+    video.hidden = false;
+    save.disabled = false;
+    setMode('open', 'Rekam ulang', message);
+  }
+
+  function recordingFailed(message) {
+    if (closed) return;
+    stopCamera();
+    video.hidden = !preview;
+    setMode('open', preview ? 'Rekam ulang' : 'Buka kamera', message);
+  }
+
+  nativeButton.addEventListener('click', () => {
+    stopCamera();
+    setMode('open', preview ? 'Rekam ulang' : 'Buka kamera', 'Rekam dari kamera HP atau pilih video MP4.');
+    nativeInput.value = '';
+    nativeInput.click();
+  });
+  nativeInput.addEventListener('change', async () => {
+    const file = nativeInput.files[0];
+    if (!file) return;
+    control.disabled = nativeButton.disabled = true;
+    try {
+      await showRecording(file, 'Periksa video MP4 sebelum menyimpan.');
+    } catch (error) {
+      recordingFailed(error.message);
+    }
+  });
+
   control.addEventListener('click', async () => {
     try {
       if (mode === 'recording') {
@@ -508,11 +582,12 @@ function recordTest(id) {
         recorder.stop();
         return;
       }
+      control.disabled = nativeButton.disabled = true;
       if (mode === 'open') {
-        if (!navigator.mediaDevices?.getUserMedia) throw new Error('Kamera memerlukan localhost atau alamat HTTPS.');
-        mimeType = ['video/mp4;codecs=avc1.42001f', 'video/mp4'].find(type => globalThis.MediaRecorder?.isTypeSupported(type));
-        if (!mimeType) throw new Error('Browser ini belum bisa merekam MP4. Buka aplikasi di browser yang mendukung rekaman MP4.');
-        control.disabled = true;
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error('Buka aplikasi lewat HTTPS agar browser bisa mengakses kamera.');
+        if (!globalThis.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
+          throw new Error('Browser ini belum mendukung rekaman dengan watermark. Gunakan pilihan Kamera HP / pilih MP4.');
+        }
         const camera = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
         if (closed) {
           camera.getTracks().forEach(track => track.stop());
@@ -528,56 +603,44 @@ function recordTest(id) {
         if (!closed) setMode('start', 'Mulai rekam', 'Kamera siap.');
         return;
       }
-      control.disabled = true;
-      const logo = new Image();
-      logo.src = '/icon-192.png';
-      await logo.decode();
-      if (closed) return;
       watermarked = watermarkRecording(video, logo);
-      recorder = new MediaRecorder(watermarked.stream, { mimeType, videoBitsPerSecond: 2_000_000 });
       const chunks = [];
       let size = 0;
       let failed = false;
-      recorder.ondataavailable = event => {
-        if (!event.data.size || closed || failed) return;
-        chunks.push(event.data);
-        size += event.data.size;
-        if (size >= recordingLimit && recorder.state === 'recording') {
-          control.disabled = true;
-          recorder.stop();
-        }
-      };
-      recorder.onerror = () => {
-        failed = true;
-        if (closed) return;
-        stopCamera();
-        video.hidden = true;
-        setMode('open', 'Buka kamera', 'Perekaman gagal. Silakan coba lagi.');
-      };
-      recorder.onstop = () => {
-        if (closed || failed) return;
-        stopCamera();
-        if (!size || size >= maxSize || recorder.mimeType.split(';')[0].toLowerCase() !== 'video/mp4') {
-          video.hidden = true;
-          setMode('open', 'Buka kamera', 'Video MP4 tidak bisa disimpan. Coba rekam ulang dengan durasi lebih pendek.');
-          return;
-        }
-        const file = new File(chunks, 'video-tes.mp4', { type: 'video/mp4' });
-        formElement.recordedVideo = file;
-        preview = URL.createObjectURL(file);
-        video.src = preview;
-        video.controls = true;
-        save.disabled = false;
-        setMode('open', 'Rekam ulang', size >= recordingLimit ? 'Rekaman berhenti karena mencapai batas ukuran. Periksa hasil sebelum menyimpan.' : 'Periksa hasil rekaman sebelum menyimpan.');
-      };
-      recorder.start(1000);
-      setMode('recording', 'Hentikan rekaman', 'Sedang merekam…');
+      recorder = startQcRecorder(watermarked.stream, {
+        ondataavailable(event) {
+          if (!event.data.size || closed || failed) return;
+          chunks.push(event.data);
+          size += event.data.size;
+          if (size >= recordingLimit && recorder.state === 'recording') {
+            control.disabled = true;
+            recorder.stop();
+          }
+        },
+        onerror() {
+          failed = true;
+          recordingFailed('Perekaman gagal di browser ini. Coba rekam ulang atau gunakan Kamera HP / pilih MP4.');
+        },
+        async onstop() {
+          if (closed || failed) return;
+          stopCamera();
+          try {
+            const message = size >= recordingLimit ? 'Rekaman berhenti karena mencapai batas ukuran. Periksa hasil sebelum menyimpan.' : 'Periksa hasil rekaman sebelum menyimpan.';
+            if (!size) throw new Error('Rekaman kosong. Coba rekam ulang dan tunggu beberapa detik sebelum berhenti.');
+            await showRecording(new Blob(chunks), message);
+          } catch (error) {
+            recordingFailed(error.message);
+          }
+        },
+      });
+      setMode('recording', 'Hentikan rekaman', 'Sedang merekam...');
     } catch (error) {
-      if (closed) return;
-      stopCamera();
-      if (!preview) video.hidden = true;
-      setMode('open', preview ? 'Rekam ulang' : 'Buka kamera', error.name === 'NotAllowedError' ? 'Izinkan akses kamera di browser, lalu coba lagi.' :
-        error.name === 'NotFoundError' ? 'Kamera tidak ditemukan.' : error.message);
+      const messages = {
+        NotAllowedError: 'Izinkan akses kamera di pengaturan browser, lalu coba lagi.',
+        NotFoundError: 'Kamera tidak ditemukan. Coba pilihan Kamera HP / pilih MP4.',
+        NotReadableError: 'Kamera mungkin sedang dipakai aplikasi lain. Tutup aplikasi itu, lalu coba lagi.',
+      };
+      recordingFailed(messages[error.name] || error.message);
     }
   });
 }
