@@ -367,3 +367,9 @@ dialog::backdrop{background:#0f1d35a6}
 .picker-product small{color:var(--muted);margin-top:2px}
 .picker-product:hover,.picker-product[aria-pressed=true]{background:#e0efff}
 .picker-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+.buyer-note{white-space:pre-wrap;overflow-wrap:anywhere}
+.buyer-note-callout{padding:10px 12px;background:#fff1c2;border-left:3px solid #db7900;color:#542e00}
+.sales-list.has-notes table{table-layout:auto}
+@media(min-width:941px){.sales-list.has-notes.numbered-table :is(th,td):nth-child(2){width:21%}.sales-list.has-notes.numbered-table :is(th,td):nth-child(3){width:25%}.sales-list.has-notes.numbered-table :is(th,td):nth-child(4){width:18%}.sales-list.has-notes.numbered-table :is(th,td):nth-child(5){width:120px}.sales-list.has-notes.has-total :is(th,td):nth-last-child(2){width:130px}}
+@media(max-width:940px){.sales-list.has-notes.numbered-table tbody td:nth-child(4){grid-column:1/-1;text-align:left}.sales-list.has-notes.numbered-table tbody td:nth-child(5){grid-column:1}}

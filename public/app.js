@@ -102,7 +102,7 @@ const marketplaceStages = new Map([
 
 function salesTable(rows, online, empty = 'Belum ada transaksi.', numberFrom) {
   const columns = [online ? 'Pesanan' : 'Transaksi', 'Barang'];
-  if (online) columns.push('Status');
+  if (online) columns.push('Catatan pembeli', 'Status');
   if (can('admin')) columns.push('Total');
   columns.push('Aksi');
   return table(columns, rows.map(s => {
@@ -110,13 +110,14 @@ function salesTable(rows, online, empty = 'Belum ada transaksi.', numberFrom) {
     const goods = esc(label(s.items[0])) + '<small>' + esc(s.items[0].qty) + ' unit' + (s.items.length > 1 ? ' · +' + (s.items.length - 1) + ' baris' : '') + '</small>';
     const row = [first + '<small>' + esc(s.buyer || 'Pembeli umum') + '</small>', goods];
     if (online) {
+      row.push('<span class="buyer-note">' + esc(s.buyerNote || '-') + '</span>');
       const color = marketplaceStages.get(s.status)?.color;
       row.push(color ? '<span class="tag ' + color + '">' + esc(s.status) + '</span>' : stage(s.status));
     }
     if (can('admin')) row.push('<span class="sale-total">' + fmt(total(s)) + '</span>');
     row.push(button('Buka', 'sale-detail', s.id));
     return row;
-  }), empty, 'sales-list' + (online ? ' has-status' : '') + (can('admin') ? ' has-total' : ''), numberFrom);
+  }), empty, 'sales-list' + (online ? ' has-status has-notes' : '') + (can('admin') ? ' has-total' : ''), numberFrom);
 }
 
 const panel = (title, content) => '<section class="panel"><div class="panel-head"><h2>' + esc(title) + '</h2></div>' + content + '</section>';
@@ -198,7 +199,7 @@ function pageRows() {
   if (view === 'online' || view === 'shop') {
     const online = view === 'online';
     const sales = state.sales.filter(s => (online ? s.channel === marketplace : s.channel === 'Toko') && (!filter || s.status === filter) &&
-      matches(s.order, s.tracking, s.channel, s.buyer, ...s.items.map(label)));
+      matches(s.order, s.tracking, s.channel, s.buyer, s.buyerNote, ...s.items.map(label)));
     if (!online) return salesTable(sales, false);
     const rank = sale => marketplaceStages.get(sale.status)?.rank ?? 3;
     sales.sort((a, b) => rank(a) - rank(b));
@@ -247,12 +248,13 @@ function pageRows() {
 }
 
 function technicianOrders() {
-  const rows = state.sales.filter(sale => sale.channel === view && matches(sale.order, sale.tracking, sale.buyer, ...sale.items.map(label)));
+  const rows = state.sales.filter(sale => sale.channel === view && matches(sale.order, sale.tracking, sale.buyer, sale.buyerNote, ...sale.items.map(label)));
   function cards(sales, action) {
     return '<div class="tech-cards">' + sales.map(sale => '<article class="tech-order"' + marketTheme(sale.channel) + '>' +
       '<div class="tech-order-head"><strong>' + esc(sale.order) + '</strong><small>' + esc(sale.buyer) + '</small></div>' +
       (sale.status === 'Dikirim' ? '<div>' + stage(sale.status) + '</div>' : '') +
       '<ul>' + sale.items.map(item => '<li>' + esc(label(item)) + ' × ' + item.qty + '</li>').join('') + '</ul>' +
+      (sale.buyerNote ? '<p class="buyer-note buyer-note-callout"><strong>Catatan pembeli</strong><br>' + esc(sale.buyerNote) + '</p>' : '') +
       (sale.tracking ? '<small class="muted">Resi ' + esc(sale.tracking) + '</small>' : '') +
       button(action || (sale.status === 'Dikirim' ? 'Lihat pesanan / retur' : 'Lihat pesanan'), 'sale-detail', sale.id, action ? 'primary' : '') + '</article>').join('') + '</div>';
   }
@@ -847,7 +849,7 @@ function saleDetail(id) {
   open(online ? s.channel + ' · ' + s.order : 'Detail transaksi toko', '<div class="details"><div class="row">' + (online ? marketBadge(s.channel) : '') + stage(s.status) + '<span>' + esc(s.buyer || 'Umum') + '</span></div>' +
     (actions.length ? '<div class="row detail-actions">' + actions.join('') + '</div>' : '') +
     (online ? '<p>Resi ' + esc(s.tracking || 'belum diisi') + '</p>' : '') + '<section><h3>Barang</h3><ul class="detail-list">' + items.join('') + '</ul>' +
-    summary + settlement + '</section>' + (s.returnResult ? '<section><h3>Hasil retur</h3><p>' + esc(s.returnResult.note) +
+    summary + settlement + '</section>' + (s.buyerNote ? '<section class="buyer-note-callout"><h3>Catatan pembeli</h3><p class="buyer-note">' + esc(s.buyerNote) + '</p></section>' : '') + (s.returnResult ? '<section><h3>Hasil retur</h3><p>' + esc(s.returnResult.note) +
       '</p><ul class="detail-list">' + s.items.map((item, i) => '<li>' + esc(label(item)) + ' · ' + esc(s.returnResult.quantities[i]) + ' siap jual</li>').join('') + '</ul></section>' : '') +
     (online ? '<section><h3>Bukti pesanan</h3>' + (proofs.length ? '<ul class="detail-list">' + proofs.join('') + '</ul>' : '<p class="muted">Belum ada bukti.</p>') + '</section>' : '') +
     '<details class="record-history"><summary>Riwayat status</summary><ul class="detail-list">' + history.join('') + '</ul></details></div>');
@@ -1017,7 +1019,7 @@ async function click(action, key, element) {
     const header = online ? '<div class="grid">' + channelField +
       field('order', 'Nomor pesanan', '', 'text', 'required') + field('tracking', 'Nomor resi jika sudah ada') + field('buyer', 'Nama pembeli', '', 'text', 'required') + '</div>' :
       field('buyer', 'Nama pembeli jika ada') + '<input type="hidden" name="channel" value="Toko">';
-    return form(online ? 'Input pesanan ' + (channel || 'marketplace') : 'Transaksi toko', 'sale', header + '<div id="lines">' + line() + '</div><div>' + button('Tambah baris', 'line-add') + '</div>');
+    return form(online ? 'Input pesanan ' + (channel || 'marketplace') : 'Transaksi toko', 'sale', header + '<label>Catatan pembeli (opsional)<textarea name="buyerNote" rows="2" maxlength="1000" placeholder="Contoh: pasang Windows 10, kirim kabel tambahan"></textarea></label>' + '<div id="lines">' + line() + '</div><div>' + button('Tambah baris', 'line-add') + '</div>');
   }
   if (action === 'recipe' || action === 'build-stock') {
     const product = byId(state.products, key);

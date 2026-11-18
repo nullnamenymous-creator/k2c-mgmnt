@@ -261,6 +261,8 @@ export function apply(state, action, input, user, files = []) {
     const order = online ? required(input.order, 'Nomor pesanan') : '';
     const tracking = online ? clean(input.tracking) : '';
     const buyer = online ? required(input.buyer, 'Nama pembeli') : clean(input.buyer);
+    const buyerNote = clean(input.buyerNote);
+    if (buyerNote.length > 1000) fail('Catatan pembeli maksimal 1000 karakter.');
     if (online && state.sales.some(s => s.channel.toLowerCase() === channel.toLowerCase() && s.order.toLowerCase() === order.toLowerCase())) fail('Nomor pesanan sudah tercatat di kanal ini.');
     if (!Array.isArray(input.items) || !input.items.length) fail('Tambahkan barang.');
     const claimed = new Map();
@@ -281,7 +283,7 @@ export function apply(state, action, input, user, files = []) {
       const cost = components ? components.reduce((sum, line) => sum + line.cost * line.qty, 0) / qty : parts ? 0 : p.cost;
       return { product: p.id, name: p.name, variant: p.variant, qty, price: number(line.price, 'Harga jual'), cost, parts, ...(components ? { components } : {}) };
     });
-    const sale = { id: id(), channel, order, tracking, buyer, items, history: [], evidence: [], at, actor };
+    const sale = { id: id(), channel, order, tracking, buyer, buyerNote, items, history: [], evidence: [], at, actor };
     history(sale, online ? 'Pesanan masuk' : 'Selesai');
     if (!online) for (const item of items) move(item.product, -item.qty, 'Penjualan toko', sale.id);
     state.sales.unshift(sale);
