@@ -239,10 +239,10 @@ function pageRows() {
     state.purchases.filter(purchase => purchase.supplierId === s.id).length,
     '<div class="row">' + button('Riwayat', 'supplier-history', s.id) + button('Edit', 'supplier', s.id) + '</div>',
   ]), 'Belum ada supplier.');
-  return table(['Barang', 'Jumlah', 'Total', 'Aksi'], state.purchases.filter(p => matches(p.supplier, ...purchaseItems(p).map(purchaseItemLabel))).map(p => [
+  return table(['Barang', 'Jumlah', 'Total', 'Pembayaran', 'Aksi'], state.purchases.filter(p => matches(p.supplier, ...purchaseItems(p).map(purchaseItemLabel))).map(p => [
     '<strong>' + esc(purchaseItemLabel(purchaseItems(p)[0])) + '</strong><small>' +
       (purchaseItems(p).length > 1 ? '+' + (purchaseItems(p).length - 1) + ' baris barang · ' : '') + esc(p.supplier + ' · ' + date(p.at)) + '</small>',
-    purchaseItems(p).reduce((sum, item) => sum + item.qty, 0) + ' unit', fmt(purchaseTotal(p)),
+    purchaseItems(p).reduce((sum, item) => sum + item.qty, 0) + ' unit', fmt(purchaseTotal(p)), esc(purchasePaymentLabel(p)),
     '<div class="row">' + button('Detail', 'purchase-detail', p.id) + (can('admin') ? button('Edit', 'purchase-edit', p.id) : '') + '</div>',
   ]), 'Belum ada pembelian.');
 }
@@ -696,10 +696,10 @@ function transactionProductSelect(item) {
   return select('product', 'Barang / Varian', [...choices, ['new', '+ Buat produk baru']], item?.product ?? (activeProducts().length ? '' : 'new'));
 }
 
-function saleProductPicker() {
+function saleProductPicker(item) {
   const products = activeProducts();
   const categories = [...new Set(products.map(p => p.category).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'id'));
-  return '<input type="hidden" name="product" value="' + (products.length ? '' : 'new') + '">' +
+  return '<input type="hidden" name="product" value="' + (item?.product ?? (products.length ? '' : 'new')) + '">' +
     '<details class="sale-picker"><summary><span class="picker-label">Barang / Varian</span><strong data-picker-choice>' +
     (products.length ? 'Pilih barang' : 'Produk baru') + '</strong></summary>' +
     '<div class="picker-body"><div class="grid"><label>Cari barang<input type="search" data-picker-query autocomplete="off" placeholder="Contoh: i5 8GB 240GB"></label>' +
@@ -716,10 +716,11 @@ function pickerResults(picker, limit = 20) {
   const query = pickerSearchText(picker.querySelector('[data-picker-query]').value).trim();
   const terms = query ? query.split(/\s+/) : [];
   const category = picker.querySelector('[name=pickerCategory]').value;
-  const online = picker.closest('form').elements.channel.value !== 'Toko';
+  const purchasing = picker.closest('form').dataset.submit.startsWith('purchase');
+  const online = !purchasing && picker.closest('form').elements.channel.value !== 'Toko';
   const products = activeProducts().filter(product => (!category || product.category === category) &&
     terms.every(term => pickerSearchText([product.name, product.variant].join(' ')).includes(term)));
-  const chosen = picker.closest('.line-item').querySelector('[name=product]').value;
+  const chosen = picker.closest('.line-item, .purchase-item').querySelector('[name=product]').value;
   picker.querySelector('[data-picker-count]').textContent = products.length ?
     'Menampilkan ' + Math.min(products.length, limit) + ' dari ' + products.length + ' barang' : 'Barang tidak ditemukan.';
   picker.querySelector('[data-action=picker-more]').hidden = products.length <= limit;
@@ -730,7 +731,7 @@ function pickerResults(picker, limit = 20) {
       '" aria-pressed="' + (product.id === chosen) + '"><span><strong>' + esc(product.name) + '</strong>' +
       (product.variant ? '<span>' + esc(product.variant) + '</span>' : '') +
       '<small>' + (capacity ? 'Stok siap jual: ' : 'Stok tersedia: ') + stock + capacity + '</small></span>' +
-      '<strong>' + fmt(online ? product.market : product.retail) + '</strong></button>';
+      (purchasing ? '' : '<strong>' + fmt(online ? product.market : product.retail) + '</strong>') + '</button>';
   }).join('');
 }
 
@@ -759,7 +760,7 @@ function newProductFrom(container) {
 
 function purchaseLine(item, index = '') {
   const existing = Boolean(item || activeProducts().length);
-  return '<tbody class="purchase-item"><tr class="purchase-entry"><td>' + transactionProductSelect(item) +
+  return '<tbody class="purchase-item"><tr class="purchase-entry"><td>' + saleProductPicker(item) +
     '<input type="hidden" name="original" value="' + esc(index) + '"></td><td>' +
     amount('qty', 'Jumlah', item?.qty ?? 1, 1) + '</td><td>' + amount('cost', 'Harga beli per unit', item?.cost) +
     '</td><td class="purchase-subtotal">' + (item ? fmt(item.qty * item.cost) : '-') + '</td><td>' + button('Hapus', 'line-remove') +
@@ -859,13 +860,46 @@ const purchaseItems = purchase => purchase.items ?? [purchase];
 const purchaseItemLabel = item => item.itemLabel || label(byId(state.products, item.product));
 const purchaseTotal = purchase => purchaseItems(purchase).reduce((sum, item) => sum + item.qty * item.cost, 0);
 
+function purchasePaymentFields(purchase) {
+  const current = purchase?.payment?.status ?? (purchase ? 'unknown' : 'paid');
+  const choices = [['paid', 'Lunas'], ['partial', 'Bayar sebagian']];
+  if (current === 'unknown') choices.unshift(['unknown', 'Belum dicatat']);
+  return '<section class="purchase-totals"><p data-purchase-total role="status"></p><div class="grid">' +
+    select('paymentStatus', 'Pembayaran', choices, current) +
+    '<label data-amount-paid>Nominal terbayar<input name="amountPaid" type="number" min="0" step="1" value="' + esc(purchase?.payment?.paid ?? '') + '"></label>' +
+    '</div><p data-purchase-balance></p></section>';
+}
+
+function updatePurchaseTotals(form) {
+  const output = form?.querySelector('[data-purchase-total]');
+  if (!output) return;
+  let qty = 0, total = 0;
+  form.querySelectorAll('.purchase-entry').forEach(row => {
+    const count = row.querySelector('[name=qty]').valueAsNumber || 0;
+    const cost = row.querySelector('[name=cost]').valueAsNumber || 0;
+    qty += count; total += count * cost;
+  });
+  output.textContent = 'Total barang: ' + qty + ' unit | Total pembelian: ' + fmt(total);
+  const partial = form.elements.paymentStatus.value === 'partial';
+  const label = form.querySelector('[data-amount-paid]');
+  label.hidden = !partial;
+  const input = label.querySelector('input');
+  input.disabled = !partial; input.required = partial;
+  form.querySelector('[data-purchase-balance]').textContent = partial ? 'Sisa tagihan: ' + fmt(Math.max(0, total - (input.valueAsNumber || 0))) : '';
+}
+
+function purchasePaymentLabel(purchase) {
+  if (!purchase.payment) return 'Pembayaran belum dicatat';
+  return purchase.payment.status === 'paid' ? 'Lunas' : 'Bayar sebagian | Terbayar ' + fmt(purchase.payment.paid) + ' | Sisa ' + fmt(purchaseTotal(purchase) - purchase.payment.paid);
+}
+
 function purchaseDetail(id) {
   const purchase = byId(state.purchases, id);
   open('Pembelian · ' + purchase.supplier, '<div class="details">' +
     table(['Barang', 'Jumlah', 'Harga beli', 'Subtotal'], purchaseItems(purchase).map(item => [
       esc(purchaseItemLabel(item)), item.qty, fmt(item.cost), fmt(item.qty * item.cost),
     ]), 'Belum ada barang.') + (purchaseItems(purchase).some(item => item.received < item.qty) ? '<p>Transaksi lama · ' + purchaseItems(purchase).reduce((sum, item) => sum + item.qty - item.received, 0) + ' unit belum tercatat masuk stok.</p>' : '') + '<p><strong>Total ' + fmt(purchaseTotal(purchase)) + '</strong></p><div class="actions">' +
-    (can('admin') ? button('Edit pembelian', 'purchase-edit', id) : '') + button('Hapus pembelian', 'purchase-delete', id) + button('Unduh nota PDF', 'purchase-pdf', id, 'primary') + '</div></div>');
+    '<p>' + purchaseItems(purchase).reduce((sum, item) => sum + item.qty, 0) + ' unit &middot; ' + esc(purchasePaymentLabel(purchase)) + '</p>' + (can('admin') ? button('Edit pembelian', 'purchase-edit', id) : '') + button('Hapus pembelian', 'purchase-delete', id) + button('Unduh nota PDF', 'purchase-pdf', id, 'primary') + '</div></div>');
 }
 
 async function click(action, key, element) {
@@ -990,7 +1024,7 @@ async function click(action, key, element) {
   }
   if (action === 'picker-select') {
     const picker = element.closest('.sale-picker');
-    const input = picker.closest('.line-item').querySelector('[name=product]');
+    const input = picker.closest('.line-item, .purchase-item').querySelector('[name=product]');
     const selection = byId(state.products, key);
     picker.querySelector('[data-picker-choice]').textContent = selection ? label(selection) : 'Produk baru';
     picker.open = false;
@@ -1004,11 +1038,13 @@ async function click(action, key, element) {
   if (action === 'line-add') {
     dialog.querySelector('#lines').insertAdjacentHTML('beforeend', ['purchase', 'purchase-edit'].includes(dialog.querySelector('form').dataset.submit) ? purchaseLine() : line());
     dialog.querySelector('#lines').lastElementChild.querySelector('summary, select[name=product]').focus();
+    updatePurchaseTotals(dialog.querySelector('form'));
     return;
   }
   if (action === 'line-remove') {
     const row = element.closest('.line-item, .purchase-item');
     if (row.parentElement.children.length > (row.matches('.purchase-item') ? 2 : 1)) row.remove();
+    updatePurchaseTotals(dialog.querySelector('form'));
     return;
   }
   if (action === 'sale-new') {
@@ -1069,8 +1105,10 @@ async function click(action, key, element) {
     const original = purchase && (suppliers.some(s => s.id === purchase.supplierId) ? purchase.supplierId : '__original_supplier__');
     if (original === '__original_supplier__') choices.push([original, purchase.supplier]);
     const revision = purchase ? '<input type="hidden" name="revision" value="' + esc(purchase.revision ?? 0) + '">' : '';
-    return form(purchase ? 'Edit pembelian' : 'Catat pembelian', action, revision + select('supplier', 'Supplier', choices, original) +
-      '<div class="purchase-sheet"><table id="lines"><thead><tr><th scope="col">Barang / Varian</th><th scope="col">Jumlah</th><th scope="col">Harga beli per unit</th><th scope="col">Subtotal</th><th scope="col">Aksi</th></tr></thead>' + (purchase ? purchaseItems(purchase).map(purchaseLine).join('') : purchaseLine()) + '</table></div><div>' + button('Tambah barang', 'line-add') + '</div>', key);
+    form(purchase ? 'Edit pembelian' : 'Catat pembelian', action, revision + select('supplier', 'Supplier', choices, original) +
+      '<div class="purchase-sheet"><table id="lines"><thead><tr><th scope="col">Barang / Varian</th><th scope="col">Jumlah</th><th scope="col">Harga beli per unit</th><th scope="col">Subtotal</th><th scope="col">Aksi</th></tr></thead>' + (purchase ? purchaseItems(purchase).map(purchaseLine).join('') : purchaseLine()) + '</table></div><div>' + button('Tambah barang', 'line-add') + '</div>' + purchasePaymentFields(purchase), key);
+    updatePurchaseTotals(dialog.querySelector('form'));
+    return;
   }
   if (action === 'component-swap') {
     const [id, index, partIndex] = key.split(':');
@@ -1160,11 +1198,13 @@ document.addEventListener('input', event => {
     document.querySelector('#rows').innerHTML = pageRows();
     return;
   }
+  if (target.name === 'amountPaid') updatePurchaseTotals(target.form);
   const row = target.closest('.purchase-entry');
   if (row && ['qty', 'cost'].includes(event.target.name)) {
     const qty = row.querySelector('[name=qty]');
     const cost = row.querySelector('[name=cost]');
     row.querySelector('.purchase-subtotal').textContent = qty.validity.valid && cost.validity.valid ? fmt(qty.valueAsNumber * cost.valueAsNumber) : '—';
+    updatePurchaseTotals(target.form);
   }
   if (event.target.id !== 'search') return;
   query = event.target.value;
@@ -1174,6 +1214,7 @@ document.addEventListener('input', event => {
 
 document.addEventListener('change', event => {
   const target = event.target;
+  if (target.name === 'paymentStatus') updatePurchaseTotals(target.form);
   if (target.name === 'financeDate' && target.validity.valid && target.value) financeDate = target.value;
   else if (target.name === 'financePeriod') financePeriod = target.value;
   else if (target.name === 'financeChannel') financeChannel = target.value;

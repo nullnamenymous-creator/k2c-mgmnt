@@ -448,3 +448,14 @@ dialog::backdrop{background:#0f1d35a6}
   .dialog-body .line-item>.grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .sidebar .brand small{display:none}
 }
+
+.purchase-totals{display:grid;gap:10px;padding:12px;background:#eaf3fc;border:1px solid var(--line)}
+.purchase-totals>[data-purchase-total]{font-weight:700}
+.purchase-entry .sale-picker summary{font-size:13px;padding:7px}
+.purchase-entry .sale-picker .picker-label{display:none}
+.purchase-entry .sale-picker .picker-body label{font-size:12px;display:grid}
+.purchase-entry .picker-product{font-size:13px}
+.purchase-sheet:has(.sale-picker) table{table-layout:auto}
+.purchase-entry .sale-picker .picker-body{min-width:min(340px,65vw)}
+.purchase-entry .button{white-space:nowrap;overflow-wrap:normal}
+@media(max-width:620px){.purchase-entry .sale-picker .picker-body{min-width:0}.purchase-entry .sale-picker input{font-size:16px}.purchase-totals{padding:10px}}

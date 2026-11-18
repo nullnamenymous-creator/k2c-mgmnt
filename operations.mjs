@@ -162,6 +162,15 @@ export function apply(state, action, input, user, files = []) {
     if (!input.id) suppliers.push(supplier);
     return supplier;
   }
+  function purchasePayment(items) {
+    if (input.paymentStatus === undefined || (action === 'purchase-edit' && input.paymentStatus === 'unknown')) return undefined;
+    const total = items.reduce((sum, item) => sum + item.qty * item.cost, 0);
+    if (!Number.isSafeInteger(total)) fail('Total pembelian terlalu besar.');
+    if (!['paid', 'partial'].includes(input.paymentStatus)) fail('Pilih status pembayaran.');
+    const paid = input.paymentStatus === 'paid' ? total : number(input.amountPaid, 'Nominal terbayar');
+    if (input.paymentStatus === 'partial' && paid >= total) fail('Pembayaran sebagian harus lebih kecil dari total pembelian.');
+    return { status: input.paymentStatus, paid };
+  }
   if (action === 'purchase') {
     allow('admin');
     const supplier = find(state.suppliers ?? [], input.supplier);
@@ -176,7 +185,7 @@ export function apply(state, action, input, user, files = []) {
         qty: number(line.qty, 'Jumlah', 1), cost: number(line.cost, 'Harga beli'), received: 0 };
     });
     const purchase = { id: purchaseId, supplier: supplier.name, supplierId: supplier.id,
-      supplierPhone: supplier.phone, items, receipts: [], at, actor };
+      supplierPhone: supplier.phone, items, payment: purchasePayment(items), receipts: [], at, actor };
     state.purchases.unshift(purchase);
     return apply(state, 'receive', { id: purchase.id, quantities: items.map(item => item.qty) }, user);
   }
@@ -205,6 +214,8 @@ export function apply(state, action, input, user, files = []) {
       const itemLabel = (previous?.product === product.id && previous.itemLabel) || [product.name, product.variant].filter(Boolean).join(' / ');
       return { product: product.id, itemLabel, qty, cost, received };
     });
+    const payment = purchasePayment(items);
+    if (!payment && purchase.payment) fail('Isi status pembayaran pembelian.');
     const changes = new Map();
     for (const item of oldItems) changes.set(item.product, (changes.get(item.product) ?? 0) - (item.received ?? 0));
     for (const item of items) changes.set(item.product, (changes.get(item.product) ?? 0) + item.received);
@@ -215,7 +226,7 @@ export function apply(state, action, input, user, files = []) {
     for (const [product, qty] of changes) {
       if (qty) move(product, qty, 'Revisi pembelian', purchase.id);
     }
-    Object.assign(purchase, { items, revision: revision + 1 });
+    Object.assign(purchase, { items, payment, revision: revision + 1 });
     if (supplier) Object.assign(purchase, { supplier: supplier.name, supplierId: supplier.id, supplierPhone: supplier.phone });
     return purchase;
   }
